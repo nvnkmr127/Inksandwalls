@@ -5,9 +5,11 @@ import { getWhatsAppProvider } from "@/lib/whatsapp";
 import { createErrorResponse, ValidationError } from "@/lib/errors";
 import { getCorrelationId } from "@/lib/correlation";
 import { logger } from "@/lib/logger";
+import { recordAuditEvent, extractRequestContext, AUDIT_ACTIONS, AUDIT_RESOURCE_TYPES } from "@/lib/audit";
 
 export async function POST(req: NextRequest) {
   const correlationId = getCorrelationId(req.headers);
+  const reqContext = extractRequestContext(req.headers);
 
   try {
     const body = await req.json().catch(() => ({}));
@@ -22,17 +24,23 @@ export async function POST(req: NextRequest) {
       throw new ValidationError("Invalid Indian mobile phone number format");
     }
 
-    // Extract client IP address for rate limiting
-    const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || req.headers.get("x-real-ip") || undefined;
-
     // Check rate limits (Cooldown, Hourly cap, IP cap)
-    const rateCheck = await checkRateLimits(normalizedPhone, ip);
+    const rateCheck = await checkRateLimits(normalizedPhone, reqContext.ipAddress || undefined);
     if (rateCheck.rateLimited) {
       logger.warn(`OTP request rate limited for phone`, {
         component: "RequestOtpApi",
         correlationId,
         metadata: { reason: rateCheck.reason },
       });
+
+      await recordAuditEvent({
+        action: AUDIT_ACTIONS.AUTH_OTP_FAILED,
+        resourceType: AUDIT_RESOURCE_TYPES.AUTHENTICATION,
+        metadata: { reason: rateCheck.reason, phone: normalizedPhone, cause: "RATE_LIMITED" },
+        ipAddress: reqContext.ipAddress,
+        userAgent: reqContext.userAgent,
+      });
+
       return NextResponse.json(
         {
           error: {
@@ -47,7 +55,7 @@ export async function POST(req: NextRequest) {
 
     // Generate 6-digit cryptographic OTP and save challenge in Redis
     const otp = generateOtp();
-    await saveOtpChallenge(normalizedPhone, otp, ip);
+    await saveOtpChallenge(normalizedPhone, otp, reqContext.ipAddress || undefined);
 
     // Dispatch OTP message via WhatsApp provider (Watxio / Test Adapter)
     const provider = getWhatsAppProvider();
@@ -64,6 +72,14 @@ export async function POST(req: NextRequest) {
     logger.info("WhatsApp OTP requested successfully", {
       component: "RequestOtpApi",
       correlationId,
+    });
+
+    await recordAuditEvent({
+      action: AUDIT_ACTIONS.AUTH_OTP_REQUESTED,
+      resourceType: AUDIT_RESOURCE_TYPES.AUTHENTICATION,
+      metadata: { phone: normalizedPhone, deliverySuccess: result.success },
+      ipAddress: reqContext.ipAddress,
+      userAgent: reqContext.userAgent,
     });
 
     // Return anti-enumeration generic success response

@@ -44,6 +44,7 @@ model User {
 
   accounts Account[]
   customer Customer?
+  auditLogs AuditLog[]
 
   @@index([email])
   @@index([phone])
@@ -83,4 +84,26 @@ model Customer {
 
   @@map("customers")
 }
+
+model AuditLog {
+  id           String   @id @default(cuid())
+  actorUserId  String?  @map("actor_user_id")
+  action       String
+  resourceType String   @map("resource_type")
+  resourceId   String?  @map("resource_id")
+  metadata     Json?
+  ipAddress    String?  @map("ip_address")
+  userAgent    String?  @map("user_agent")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  actorUser User? @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt])
+  @@index([actorUserId])
+  @@index([action])
+  @@index([resourceType])
+  @@index([resourceType, resourceId])
+  @@map("audit_logs")
+}
+
 

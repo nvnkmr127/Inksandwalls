@@ -5,9 +5,12 @@ import { signIn } from "@/lib/auth";
 import { createErrorResponse, ValidationError } from "@/lib/errors";
 import { getCorrelationId } from "@/lib/correlation";
 import { logger } from "@/lib/logger";
+import { recordAuditEvent, extractRequestContext, AUDIT_ACTIONS, AUDIT_RESOURCE_TYPES } from "@/lib/audit";
+import { findOrCreateUserByPhone } from "@/lib/auth/user-service";
 
 export async function POST(req: NextRequest) {
   const correlationId = getCorrelationId(req.headers);
+  const reqContext = extractRequestContext(req.headers);
 
   try {
     const body = await req.json().catch(() => ({}));
@@ -35,6 +38,14 @@ export async function POST(req: NextRequest) {
     // Inspect challenge prior to Auth.js sign-in to return rich error details
     const challenge = await getOtpChallenge(normalizedPhone);
     if (!challenge) {
+      await recordAuditEvent({
+        action: AUDIT_ACTIONS.AUTH_OTP_FAILED,
+        resourceType: AUDIT_RESOURCE_TYPES.AUTHENTICATION,
+        metadata: { phone: normalizedPhone, reason: "OTP expired or missing challenge" },
+        ipAddress: reqContext.ipAddress,
+        userAgent: reqContext.userAgent,
+      });
+
       return NextResponse.json(
         {
           error: {
@@ -62,6 +73,14 @@ export async function POST(req: NextRequest) {
         metadata: { attempts },
       });
 
+      await recordAuditEvent({
+        action: AUDIT_ACTIONS.AUTH_OTP_FAILED,
+        resourceType: AUDIT_RESOURCE_TYPES.AUTHENTICATION,
+        metadata: { phone: normalizedPhone, attempts, reason: "Invalid OTP code" },
+        ipAddress: reqContext.ipAddress,
+        userAgent: reqContext.userAgent,
+      });
+
       return NextResponse.json(
         {
           error: {
@@ -74,6 +93,9 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Ensure user record exists in database
+    const user = await findOrCreateUserByPhone(normalizedPhone);
+
     // Execute Auth.js sign-in (validates credentials, invalidates challenge, & sets session cookie)
     try {
       await signIn("whatsapp-otp", {
@@ -82,7 +104,6 @@ export async function POST(req: NextRequest) {
         redirect: false,
       });
     } catch (err: unknown) {
-      // Auth.js redirects on success unless handled or throws CredentialsSignin
       if (err instanceof Error && err.message.includes("NEXT_REDIRECT")) {
         // Next.js redirect thrown by Auth.js is normal on success
       } else {
@@ -92,6 +113,26 @@ export async function POST(req: NextRequest) {
         }, err as Error);
       }
     }
+
+    await recordAuditEvent({
+      actorUserId: user.id,
+      action: AUDIT_ACTIONS.AUTH_OTP_VERIFIED,
+      resourceType: AUDIT_RESOURCE_TYPES.AUTHENTICATION,
+      resourceId: user.id,
+      metadata: { phone: normalizedPhone },
+      ipAddress: reqContext.ipAddress,
+      userAgent: reqContext.userAgent,
+    });
+
+    await recordAuditEvent({
+      actorUserId: user.id,
+      action: AUDIT_ACTIONS.AUTH_LOGIN,
+      resourceType: AUDIT_RESOURCE_TYPES.AUTHENTICATION,
+      resourceId: user.id,
+      metadata: { provider: "whatsapp-otp", phone: normalizedPhone },
+      ipAddress: reqContext.ipAddress,
+      userAgent: reqContext.userAgent,
+    });
 
     logger.info("WhatsApp OTP verified & Auth.js session established", {
       component: "VerifyOtpApi",
@@ -103,6 +144,7 @@ export async function POST(req: NextRequest) {
         success: true,
         message: "OTP verified successfully",
         user: {
+          id: user.id,
           phone: normalizedPhone,
           phoneVerified: true,
         },
