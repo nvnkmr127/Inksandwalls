@@ -1,12 +1,14 @@
 import { auth } from "./index";
 import { logger } from "../logger";
+import type { Role, UserStatus } from "@prisma/client";
 
 export interface CurrentUser {
   id: string;
   name?: string | null;
   email?: string | null;
   image?: string | null;
-  role?: string;
+  role?: Role | "GUEST" | "CUSTOMER" | "STORE_ADMIN" | "SUPER_ADMIN";
+  status?: UserStatus | "ACTIVE" | "SUSPENDED";
   phone?: string;
 }
 
@@ -38,6 +40,7 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
     email: session.user.email ?? null,
     image: session.user.image ?? null,
     role: session.user.role,
+    status: session.user.status,
     phone: session.user.phone,
   };
 }

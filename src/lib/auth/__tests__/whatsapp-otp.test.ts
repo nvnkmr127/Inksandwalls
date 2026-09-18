@@ -89,7 +89,11 @@ async function runWhatsAppOtpTests() {
   assert(testProvider.getLastOtp(phone) === "654321", "Test provider message store mismatch");
 
   // Verify Auth.js Credentials authorize handler
-  const credentialsProvider = authConfig.providers[0];
+  type ProviderObj = { id?: string; options?: { id?: string } };
+  const credentialsProvider = authConfig.providers.find((p) => {
+    const obj: ProviderObj = typeof p === "function" ? (p as () => ProviderObj)() : (p as ProviderObj);
+    return obj?.id === "whatsapp-otp" || obj?.options?.id === "whatsapp-otp";
+  }) || authConfig.providers[0];
   assert(Boolean(credentialsProvider), "Credentials provider missing in authConfig");
 
   // Save active challenge for Auth.js authorize test

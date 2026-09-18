@@ -1,23 +1,34 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { Phone, Lock, ArrowRight, CheckCircle2, AlertCircle, RefreshCw } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { signIn } from "next-auth/react";
+import { PhoneInput } from "@/components/auth/PhoneInput";
+import { OtpInput } from "@/components/auth/OtpInput";
+import { Button } from "@/components/ui/button";
+import { normalizePhoneNumber } from "@/lib/auth/phone";
+import { toast } from "@/components/feedback/toast";
+import { AlertCircle, ArrowRight, CheckCircle2, Loader2, RefreshCw } from "lucide-react";
 
 export interface WhatsAppOtpFormProps {
-  onSuccess?: (user: { phone: string }) => void;
+  returnUrl?: string;
+  onSuccess?: () => void;
 }
 
 type Step = "phone" | "otp" | "success";
 
-export function WhatsAppOtpForm({ onSuccess }: WhatsAppOtpFormProps) {
+export function WhatsAppOtpForm({ returnUrl = "/", onSuccess }: WhatsAppOtpFormProps) {
+  const router = useRouter();
   const [phone, setPhone] = useState("");
   const [otp, setOtp] = useState("");
   const [step, setStep] = useState<Step>("phone");
   const [loading, setLoading] = useState(false);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [phoneError, setPhoneError] = useState<string | null>(null);
+  const [otpError, setOtpError] = useState<string | null>(null);
+  const [generalError, setGeneralError] = useState<string | null>(null);
   const [cooldown, setCooldown] = useState(0);
 
+  // Resend cooldown timer
   useEffect(() => {
     let timer: NodeJS.Timeout;
     if (cooldown > 0) {
@@ -28,168 +39,219 @@ export function WhatsAppOtpForm({ onSuccess }: WhatsAppOtpFormProps) {
     return () => clearInterval(timer);
   }, [cooldown]);
 
-  const handleRequestOtp = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setErrorMessage(null);
-    setSuccessMessage(null);
+  // Handle request OTP submit
+  const handleRequestOtp = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    setPhoneError(null);
+    setGeneralError(null);
+
+    const normalized = normalizePhoneNumber(phone);
+    if (!normalized) {
+      setPhoneError("Please enter a valid 10-digit Indian mobile number");
+      return;
+    }
+
     setLoading(true);
 
     try {
       const res = await fetch("/api/auth/whatsapp/request-otp", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone }),
+        body: JSON.stringify({ phone: normalized }),
       });
 
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
 
       if (!res.ok) {
-        setErrorMessage(data.error?.message || "Failed to request OTP. Please try again.");
+        if (res.status === 429) {
+          setGeneralError("Too many requests. Please try again later.");
+        } else if (data.error?.message) {
+          setGeneralError(data.error.message);
+        } else {
+          setGeneralError("Unable to send OTP. Please try again.");
+        }
         setLoading(false);
         return;
       }
 
-      setSuccessMessage(data.message || "OTP dispatched to your WhatsApp!");
+      toast.success("OTP sent to WhatsApp", `Verification code sent to ${normalized}`);
       setStep("otp");
+      setOtp("");
+      setOtpError(null);
       setCooldown(60);
     } catch {
-      setErrorMessage("Network error. Please check your internet connection.");
+      setGeneralError("Something went wrong. Please check your network connection.");
     } finally {
       setLoading(false);
     }
   };
 
-  const handleVerifyOtp = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setErrorMessage(null);
-    setSuccessMessage(null);
+  // Handle verify OTP submit
+  const handleVerifyOtp = async (otpToVerify?: string, e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const finalOtp = otpToVerify || otp;
+    setOtpError(null);
+    setGeneralError(null);
+
+    if (finalOtp.length !== 6) {
+      setOtpError("Please enter a complete 6-digit OTP");
+      return;
+    }
+
+    const normalized = normalizePhoneNumber(phone);
+    if (!normalized) {
+      setPhoneError("Invalid phone number format");
+      setStep("phone");
+      return;
+    }
+
     setLoading(true);
 
     try {
-      const res = await fetch("/api/auth/whatsapp/verify-otp", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone, otp }),
+      const res = await signIn("whatsapp-otp", {
+        phone: normalized,
+        otp: finalOtp,
+        redirect: false,
       });
 
-      const data = await res.json();
-
-      if (!res.ok) {
-        setErrorMessage(data.error?.message || "Invalid OTP verification attempt.");
+      if (!res || res.error) {
+        if (res?.status === 429) {
+          setGeneralError("Too many requests. Please try again later.");
+        } else {
+          setOtpError("Invalid OTP. Please try again.");
+        }
         setLoading(false);
         return;
       }
 
       setStep("success");
-      setSuccessMessage("Phone verified successfully!");
-      if (onSuccess && data.user) {
-        onSuccess(data.user);
+      toast.success("Authenticated", "Successfully signed in via WhatsApp");
+
+      if (onSuccess) {
+        onSuccess();
       }
+
+      // Redirect to returnUrl
+      router.push(returnUrl);
+      router.refresh();
     } catch {
-      setErrorMessage("Network error during OTP verification.");
-    } finally {
+      setGeneralError("Something went wrong. Please try again.");
       setLoading(false);
     }
   };
 
+  // Change phone number action
+  const handleChangeNumber = () => {
+    setOtp("");
+    setOtpError(null);
+    setGeneralError(null);
+    setStep("phone");
+  };
+
   return (
-    <div className="w-full max-w-md mx-auto p-6 bg-stone-900 border border-stone-800 rounded-2xl shadow-xl text-stone-100">
-      <div className="text-center mb-6">
-        <h2 className="text-2xl font-serif font-bold text-amber-500">WhatsApp Sign In</h2>
-        <p className="text-sm text-stone-400 mt-1">
-          {step === "phone" ? "Enter your mobile number to receive a secure OTP" : step === "otp" ? "Enter the 6-digit code sent to your WhatsApp" : "Authentication complete"}
-        </p>
-      </div>
-
-      {errorMessage && (
-        <div className="mb-4 p-3 bg-red-950/60 border border-red-800/80 rounded-xl text-red-200 text-xs flex items-center gap-2">
-          <AlertCircle className="w-4 h-4 shrink-0 text-red-400" />
-          <span>{errorMessage}</span>
-        </div>
-      )}
-
-      {successMessage && step !== "success" && (
-        <div className="mb-4 p-3 bg-emerald-950/60 border border-emerald-800/80 rounded-xl text-emerald-200 text-xs flex items-center gap-2">
-          <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400" />
-          <span>{successMessage}</span>
+    <div className="w-full space-y-6">
+      {generalError && (
+        <div
+          role="alert"
+          className="p-3.5 bg-destructive/10 border border-destructive/30 rounded-lg text-destructive text-xs font-medium flex items-start gap-2.5"
+        >
+          <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+          <span>{generalError}</span>
         </div>
       )}
 
       {step === "phone" && (
-        <form onSubmit={handleRequestOtp} className="space-y-4">
-          <div>
-            <label className="block text-xs font-medium text-stone-300 mb-1">WhatsApp Mobile Number</label>
-            <div className="relative">
-              <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-500" />
-              <input
-                type="tel"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                placeholder="+91 98765 43210"
-                required
-                className="w-full pl-10 pr-4 py-2.5 bg-stone-950 border border-stone-700 rounded-xl text-sm focus:outline-none focus:border-amber-500 transition-colors"
-              />
-            </div>
-          </div>
+        <form onSubmit={handleRequestOtp} className="space-y-5">
+          <PhoneInput
+            value={phone}
+            onChange={(val) => {
+              setPhone(val);
+              if (phoneError) setPhoneError(null);
+            }}
+            error={phoneError}
+            disabled={loading}
+            autoFocus
+          />
 
-          <button
+          <Button
             type="submit"
             disabled={loading || !phone.trim()}
-            className="w-full py-3 bg-amber-600 hover:bg-amber-500 text-stone-950 font-medium rounded-xl text-sm flex items-center justify-center gap-2 transition-colors disabled:opacity-50"
+            className="w-full py-5 text-sm font-medium flex items-center justify-center gap-2"
           >
             {loading ? (
-              <RefreshCw className="w-4 h-4 animate-spin" />
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                <span>Sending OTP...</span>
+              </>
             ) : (
               <>
-                <span>Send WhatsApp OTP</span>
+                <span>Send OTP via WhatsApp</span>
                 <ArrowRight className="w-4 h-4" />
               </>
             )}
-          </button>
+          </Button>
         </form>
       )}
 
       {step === "otp" && (
-        <form onSubmit={handleVerifyOtp} className="space-y-4">
-          <div>
-            <label className="block text-xs font-medium text-stone-300 mb-1">6-Digit OTP</label>
-            <div className="relative">
-              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-500" />
-              <input
-                type="text"
-                maxLength={6}
-                value={otp}
-                onChange={(e) => setOtp(e.target.value.replace(/\D/g, ""))}
-                placeholder="123456"
-                required
-                className="w-full pl-10 pr-4 py-2.5 bg-stone-950 border border-stone-700 rounded-xl text-sm tracking-widest font-mono text-center focus:outline-none focus:border-amber-500 transition-colors"
-              />
-            </div>
+        <form onSubmit={(e) => handleVerifyOtp(undefined, e)} className="space-y-5">
+          <div className="flex items-center justify-between text-xs text-muted-foreground bg-muted/40 p-2.5 rounded-lg border border-border/50">
+            <span>OTP sent to <strong className="font-mono text-foreground">{normalizePhoneNumber(phone) || phone}</strong></span>
+            <button
+              type="button"
+              onClick={handleChangeNumber}
+              disabled={loading}
+              className="text-primary hover:underline font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring rounded px-1"
+            >
+              Change number
+            </button>
           </div>
 
-          <button
+          <OtpInput
+            value={otp}
+            onChange={(val) => {
+              setOtp(val);
+              if (otpError) setOtpError(null);
+            }}
+            error={otpError}
+            disabled={loading}
+            autoFocus
+            onComplete={(completedOtp) => handleVerifyOtp(completedOtp)}
+          />
+
+          <Button
             type="submit"
             disabled={loading || otp.length !== 6}
-            className="w-full py-3 bg-amber-600 hover:bg-amber-500 text-stone-950 font-medium rounded-xl text-sm flex items-center justify-center gap-2 transition-colors disabled:opacity-50"
+            className="w-full py-5 text-sm font-medium flex items-center justify-center gap-2"
           >
             {loading ? (
-              <RefreshCw className="w-4 h-4 animate-spin" />
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                <span>Verifying...</span>
+              </>
             ) : (
               <>
-                <span>Verify & Sign In</span>
+                <span>Verify OTP & Sign In</span>
                 <CheckCircle2 className="w-4 h-4" />
               </>
             )}
-          </button>
+          </Button>
 
-          <div className="text-center pt-2">
+          <div className="text-center pt-1">
             <button
               type="button"
               disabled={cooldown > 0 || loading}
-              onClick={handleRequestOtp}
-              className="text-xs text-amber-500 hover:underline disabled:text-stone-600 transition-colors"
+              onClick={() => handleRequestOtp()}
+              className="text-xs text-muted-foreground hover:text-foreground font-medium disabled:opacity-50 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring rounded px-2 py-1"
             >
-              {cooldown > 0 ? `Resend OTP in ${cooldown}s` : "Resend OTP"}
+              {cooldown > 0 ? (
+                <span className="flex items-center justify-center gap-1.5">
+                  <RefreshCw className="w-3 h-3 animate-spin" />
+                  <span>Resend OTP in {cooldown}s</span>
+                </span>
+              ) : (
+                "Resend OTP"
+              )}
             </button>
           </div>
         </form>
@@ -197,9 +259,9 @@ export function WhatsAppOtpForm({ onSuccess }: WhatsAppOtpFormProps) {
 
       {step === "success" && (
         <div className="text-center py-6 space-y-3">
-          <CheckCircle2 className="w-12 h-12 text-emerald-500 mx-auto" />
-          <h3 className="text-lg font-medium text-stone-100">Successfully Signed In</h3>
-          <p className="text-xs text-stone-400">Authenticated phone: {phone}</p>
+          <CheckCircle2 className="w-10 h-10 text-emerald-500 mx-auto" />
+          <h3 className="text-lg font-semibold text-foreground">Authenticated</h3>
+          <p className="text-xs text-muted-foreground">Redirecting to your destination...</p>
         </div>
       )}
     </div>

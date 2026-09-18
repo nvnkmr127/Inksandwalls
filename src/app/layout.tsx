@@ -3,6 +3,7 @@ import { Inter } from "next/font/google"
 import { siteConfig } from "@/config/site"
 import { Header } from "@/components/layout/Header"
 import { Footer } from "@/components/layout/Footer"
+import { Providers } from "@/components/providers"
 import "./globals.css"
 
 const inter = Inter({
@@ -32,9 +33,11 @@ export default function RootLayout({
   return (
     <html lang="en" className={`${inter.variable} h-full scroll-smooth`}>
       <body className="min-h-screen flex flex-col bg-background text-foreground antialiased font-sans">
-        <Header />
-        <main className="flex-1 flex flex-col">{children}</main>
-        <Footer />
+        <Providers>
+          <Header />
+          <main className="flex-1 flex flex-col">{children}</main>
+          <Footer />
+        </Providers>
       </body>
     </html>
   )

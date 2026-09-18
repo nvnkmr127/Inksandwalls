@@ -5,6 +5,7 @@ import Link from "next/link"
 import { Menu } from "lucide-react"
 import { siteConfig } from "@/config/site"
 import { Button } from "@/components/ui/button"
+import { AuthStatus } from "@/components/auth/AuthStatus"
 import {
   Sheet,
   SheetContent,
@@ -45,11 +46,12 @@ export function Header() {
           ))}
         </nav>
 
-        {/* Desktop Header Actions Placeholder */}
+        {/* Desktop Header Actions */}
         <div className="hidden md:flex items-center gap-4">
           <Button variant="outline" size="sm">
             Enquire
           </Button>
+          <AuthStatus />
         </div>
 
         {/* Mobile Navigation Trigger */}
@@ -86,7 +88,7 @@ export function Header() {
                     {link.label}
                   </Link>
                 ))}
-                <div className="pt-4">
+                <div className="pt-4 flex flex-col gap-3">
                   <Button
                     variant="outline"
                     className="w-full justify-center"
@@ -94,6 +96,7 @@ export function Header() {
                   >
                     Enquire
                   </Button>
+                  <AuthStatus mobile onNavClick={() => setIsOpen(false)} />
                 </div>
               </nav>
             </SheetContent>

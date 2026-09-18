@@ -27,9 +27,10 @@ async function runAuthSelfTest() {
   if (authConfig.callbacks?.jwt) {
     const initialToken = { sub: "user_123" };
     const dummyUser = { id: "user_123", role: "CUSTOMER", phone: "+919876543210" };
+    type JwtParam = Parameters<NonNullable<typeof authConfig.callbacks.jwt>>[0];
     const updatedToken = await authConfig.callbacks.jwt({
       token: initialToken,
-      user: dummyUser,
+      user: dummyUser as unknown as JwtParam["user"],
       account: null,
     });
     assert(Boolean(updatedToken), "JWT token returned should not be null");

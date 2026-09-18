@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "tsx -e \"require('module')._cache[require.resolve('server-only')] = { exports: {} }; require('./src/lib/media/__tests__/pipeline.test.ts'); require('./src/lib/__tests__/observability.test.ts'); require('./src/components/__tests__/ui-kit.test.ts'); require('./src/lib/auth/__tests__/auth.test.ts'); require('./src/lib/auth/__tests__/whatsapp-otp.test.ts');\"",
+    "test": "tsx -e \"require('module')._cache[require.resolve('server-only')] = { exports: {} }; require('./src/lib/media/__tests__/pipeline.test.ts'); require('./src/lib/__tests__/observability.test.ts'); require('./src/components/__tests__/ui-kit.test.ts'); require('./src/lib/auth/__tests__/auth.test.ts'); require('./src/lib/auth/__tests__/whatsapp-otp.test.ts'); require('./src/lib/auth/__tests__/google-auth.test.ts'); require('./src/components/auth/__tests__/auth-ui.test.ts'); require('./src/lib/auth/__tests__/user-roles.test.ts'); require('./src/lib/auth/__tests__/rbac.test.ts');\"",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:migrate:deploy": "prisma migrate deploy",

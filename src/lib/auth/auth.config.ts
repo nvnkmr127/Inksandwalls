@@ -1,5 +1,7 @@
 import type { NextAuthConfig } from "next-auth";
+import type { AppRole } from "@/types/next-auth";
 import Credentials from "next-auth/providers/credentials";
+import Google from "next-auth/providers/google";
 import { normalizePhoneNumber } from "./phone";
 import { getOtpChallenge, verifyOtpHash, incrementAttemptCount, invalidateOtpChallenge } from "./otp";
 
@@ -13,6 +15,15 @@ async function sha256Short(input: string): Promise<string> {
 
 export const authConfig: NextAuthConfig = {
   providers: [
+    Google({
+      clientId: process.env.GOOGLE_CLIENT_ID || "",
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET || "",
+      authorization: {
+        params: {
+          scope: "openid profile email",
+        },
+      },
+    }),
     Credentials({
       id: "whatsapp-otp",
       name: "WhatsApp OTP",
@@ -60,22 +71,30 @@ export const authConfig: NextAuthConfig = {
     maxAge: 30 * 24 * 60 * 60, // 30 days session persistence
   },
   pages: {
-    signIn: "/auth/login",
+    signIn: "/login",
   },
   secret: process.env.AUTH_SECRET || (process.env.NODE_ENV === "test" ? "test-secret-key-min-32-chars-long-phrase" : undefined),
   callbacks: {
-    async jwt({ token, user }) {
+    async jwt({ token, user, profile }) {
       if (user) {
         token.sub = user.id || token.sub;
-        token.role = user.role;
-        token.phone = user.phone;
+        token.name = user.name ?? token.name ?? null;
+        token.email = user.email ?? token.email ?? null;
+        token.picture = user.image ?? (profile as { picture?: string })?.picture ?? token.picture ?? null;
+        token.role = user.role || token.role || "CUSTOMER";
+        if (user.phone) {
+          token.phone = user.phone;
+        }
       }
       return token;
     },
     async session({ session, token }) {
       if (token && session.user) {
         session.user.id = token.sub || "";
-        session.user.role = token.role as string | undefined;
+        session.user.name = token.name ?? session.user.name ?? null;
+        session.user.email = token.email ?? session.user.email ?? null;
+        session.user.image = token.picture ?? session.user.image ?? null;
+        session.user.role = (token.role as AppRole) || "CUSTOMER";
         session.user.phone = token.phone as string | undefined;
       }
       return session;
