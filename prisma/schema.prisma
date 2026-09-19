@@ -106,4 +106,102 @@ model AuditLog {
   @@map("audit_logs")
 }
 
+model Category {
+  id          String   @id @default(cuid())
+  name        String
+  slug        String   @unique
+  description String?  @db.Text
+  isActive    Boolean  @default(true) @map("is_active")
+  sortOrder   Int      @default(0) @map("sort_order")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  products    Product[]
+
+  @@index([slug])
+  @@index([isActive])
+  @@index([sortOrder])
+  @@map("categories")
+}
+
+enum ProductType {
+  PER_AREA
+  FIXED
+}
+
+model Product {
+  id          String      @id @default(cuid())
+  name        String
+  slug        String      @unique
+  description String?     @db.Text
+  productType ProductType @map("product_type")
+  isActive    Boolean     @default(true) @map("is_active")
+  
+  // Monetary representation in integer minor units (paise)
+  price       Int?        @map("price")
+  rate        Int?        @map("rate")
+  
+  // PER_AREA product fields
+  wastage     Float?      @map("wastage")
+  minArea     Float?      @map("min_area")
+  rollWidth   Float?      @map("roll_width")
+  
+  // Catalogue configuration
+  returnable  Boolean     @default(true) @map("returnable")
+  hsnCode     String?     @map("hsn_code")
+  
+  categoryId  String      @map("category_id")
+  category    Category    @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  
+  variants    ProductVariant[]
+
+  createdAt   DateTime    @default(now()) @map("created_at")
+  updatedAt   DateTime    @updatedAt @map("updated_at")
+
+  @@index([slug])
+  @@index([categoryId])
+  @@index([productType])
+  @@index([isActive])
+  @@map("products")
+}
+
+model ProductVariant {
+  id        String   @id @default(cuid())
+  productId String   @map("product_id")
+  name      String
+  sku       String?  @unique
+  price     Int      @map("price")
+  isActive  Boolean  @default(true) @map("is_active")
+  sortOrder Int      @default(0) @map("sort_order")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId])
+  @@index([sku])
+  @@index([isActive])
+  @@index([sortOrder])
+  @@map("product_variants")
+}
+
+model Collection {
+  id          String   @id @default(cuid())
+  name        String
+  slug        String   @unique
+  description String?  @db.Text
+  isActive    Boolean  @default(true) @map("is_active")
+  sortOrder   Int      @default(0) @map("sort_order")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@index([slug])
+  @@index([isActive])
+  @@index([sortOrder])
+  @@map("collections")
+}
+
+
+
+
 
