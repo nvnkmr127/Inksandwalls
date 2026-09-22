@@ -16,6 +16,7 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
+import { CartDrawer } from "@/components/cart/cart-drawer";
 
 export interface HeaderProps {
   categories?: Array<{ id: string; name: string; slug: string }>;
@@ -127,24 +128,7 @@ export function Header({ categories = [], collections = [] }: HeaderProps) {
           )}
 
           {/* Cart Entry Point */}
-          <Link href="/cart" passHref>
-            <Button
-              variant="ghost"
-              size="icon"
-              aria-label="View shopping cart"
-              className="relative h-9 w-9 text-muted-foreground hover:text-foreground"
-            >
-              <ShoppingBag className="h-4 w-4" />
-              {cartCount > 0 && (
-                <span
-                  id="header-cart-count"
-                  className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold text-primary-foreground leading-none"
-                >
-                  {cartCount > 99 ? "99+" : cartCount}
-                </span>
-              )}
-            </Button>
-          </Link>
+          <CartDrawer />
 
           {/* Account Authentication State */}
           <AuthStatus />
@@ -152,24 +136,7 @@ export function Header({ categories = [], collections = [] }: HeaderProps) {
 
         {/* Mobile Header Actions & Menu Trigger */}
         <div className="flex md:hidden items-center gap-1">
-          <Link href="/cart" passHref>
-            <Button
-              variant="ghost"
-              size="icon"
-              aria-label="View shopping cart"
-              className="relative h-9 w-9 text-muted-foreground hover:text-foreground"
-            >
-              <ShoppingBag className="h-5 w-5" />
-              {cartCount > 0 && (
-                <span
-                  id="mobile-header-cart-count"
-                  className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold text-primary-foreground leading-none"
-                >
-                  {cartCount > 99 ? "99+" : cartCount}
-                </span>
-              )}
-            </Button>
-          </Link>
+          <CartDrawer />
 
           <Sheet open={isOpen} onOpenChange={setIsOpen}>
             <SheetTrigger

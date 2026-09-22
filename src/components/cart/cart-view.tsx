@@ -12,14 +12,26 @@ import {
   Loader2,
   AlertTriangle,
   Info,
+  Edit2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { Select } from "@/components/ui/select";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { OptimizedImage } from "@/components/ui/OptimizedImage";
 import { formatPaiseToRupees } from "@/lib/money";
 import {
   updateCartQuantityAction,
+  updateCartConfigurationAction,
   removeCartItemAction,
   clearCartAction,
 } from "@/app/actions/cart";
@@ -219,6 +231,19 @@ export function CartView({ initialCart }: CartViewProps) {
         {cart.items.map((item) => {
           const isPerArea = item.productType === "PER_AREA";
           const isBusy = updatingItemId === item.id || isClearing;
+          
+          let EditConfigNode = null;
+          if (isPerArea && item.dimensions) {
+            EditConfigNode = (
+              <CartItemEditDialog 
+                item={item} 
+                isBusy={isBusy} 
+                setCart={setCart} 
+                setErrorMessage={setErrorMessage} 
+                setUpdatingItemId={setUpdatingItemId} 
+              />
+            );
+          }
 
           return (
             <div
@@ -258,6 +283,7 @@ export function CartView({ initialCart }: CartViewProps) {
                         <Link href={`/products/${item.productSlug}`}>
                           {item.productName}
                         </Link>
+                        {EditConfigNode}
                       </h3>
                       {!item.isAvailable && (
                         <Badge variant="destructive" className="mt-1">
@@ -421,5 +447,87 @@ export function CartView({ initialCart }: CartViewProps) {
         </div>
       </div>
     </div>
+  );
+}
+
+function CartItemEditDialog({ item, isBusy, setCart, setErrorMessage, setUpdatingItemId }: any) {
+  const [editWidth, setEditWidth] = useState(String(item.dimensions.width));
+  const [editHeight, setEditHeight] = useState(String(item.dimensions.height));
+  const [editUnit, setEditUnit] = useState(item.dimensions.unit);
+  const [isEditOpen, setIsEditOpen] = useState(false);
+  const [, startTransition] = useTransition();
+
+  const handleEditSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsEditOpen(false);
+    
+    setUpdatingItemId(item.id);
+    setErrorMessage(null);
+
+    startTransition(async () => {
+      try {
+        const res = await updateCartConfigurationAction(item.id, {
+          width: Number(editWidth),
+          height: Number(editHeight),
+          unit: editUnit as any,
+        });
+        if (res.success && res.cart) {
+          setCart(res.cart);
+          notifyCartUpdated(res.cart.totalItems);
+        } else {
+          setErrorMessage(res.error || "Failed to update configuration.");
+        }
+      } catch (err) {
+        setErrorMessage(
+          err instanceof Error ? err.message : "An unexpected error occurred."
+        );
+      } finally {
+        setUpdatingItemId(null);
+      }
+    });
+  };
+
+  return (
+    <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
+      <DialogTrigger>
+        <Button variant="ghost" size="sm" className="h-7 px-2 text-xs gap-1 ml-2">
+          <Edit2 className="h-3 w-3" /> Edit Size
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Edit Dimensions for {item.productName}</DialogTitle>
+        </DialogHeader>
+        <form onSubmit={handleEditSubmit} className="space-y-4 pt-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label>Width</Label>
+              <Input type="number" step="0.01" value={editWidth} onChange={(e) => setEditWidth(e.target.value)} required />
+            </div>
+            <div className="space-y-2">
+              <Label>Height</Label>
+              <Input type="number" step="0.01" value={editHeight} onChange={(e) => setEditHeight(e.target.value)} required />
+            </div>
+          </div>
+          <div className="space-y-2">
+            <Label>Unit</Label>
+            <Select
+              value={editUnit}
+              onChange={(e) => setEditUnit(e.target.value)}
+              options={[
+                { value: "ft", label: "Feet (ft)" },
+                { value: "inch", label: "Inches (in)" },
+                { value: "cm", label: "Centimeters (cm)" },
+                { value: "mm", label: "Millimeters (mm)" },
+              ]}
+            />
+          </div>
+          <div className="flex justify-end pt-4 gap-3">
+            <Button type="button" variant="ghost" onClick={() => setIsEditOpen(false)}>Cancel</Button>
+            <Button type="submit" disabled={isBusy}>Update Size</Button>
+          </div>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }

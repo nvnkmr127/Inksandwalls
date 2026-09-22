@@ -82,6 +82,8 @@ model Customer {
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
   carts Cart[]
+  addresses Address[]
+  checkouts CheckoutSession[]
 
   @@map("customers")
 }
@@ -245,6 +247,7 @@ model Cart {
   email       String?
   phone       String?
   items       CartItem[]
+  checkout    CheckoutSession?
   createdAt   DateTime    @default(now()) @map("created_at")
   updatedAt   DateTime    @updatedAt @map("updated_at")
 
@@ -311,4 +314,77 @@ model CartItem {
   @@map("cart_items")
 }
 
+model Address {
+  id              String   @id @default(cuid())
+  customerId      String?  @map("customer_id")
+  customer        Customer? @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  
+  firstName       String   @map("first_name")
+  lastName        String   @map("last_name")
+  addressLine1    String   @map("address_line1")
+  addressLine2    String?  @map("address_line2")
+  city            String
+  state           String
+  postalCode      String   @map("postal_code")
+  country         String   @default("IN")
+  phone           String?
+  
+  isDefaultShipping Boolean @default(false) @map("is_default_shipping")
+  isDefaultBilling  Boolean @default(false) @map("is_default_billing")
+  
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  // Relations for checkouts
+  checkoutsShipping CheckoutSession[] @relation("CheckoutShippingAddress")
+  checkoutsBilling  CheckoutSession[] @relation("CheckoutBillingAddress")
+
+  @@index([customerId])
+  @@map("addresses")
+}
+
+enum CheckoutStatus {
+  ACTIVE
+  EXPIRED
+  COMPLETED
+}
+
+model CheckoutSession {
+  id                String         @id @default(cuid())
+  cartId            String         @unique @map("cart_id")
+  cart              Cart           @relation(fields: [cartId], references: [id], onDelete: Restrict)
+  
+  customerId        String?        @map("customer_id")
+  customer          Customer?      @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  
+  sessionId         String?        @map("session_id") // Guest session
+  
+  status            CheckoutStatus @default(ACTIVE)
+  
+  email             String
+  phone             String?
+  
+  shippingAddressId String?        @map("shipping_address_id")
+  shippingAddress   Address?       @relation("CheckoutShippingAddress", fields: [shippingAddressId], references: [id], onDelete: Restrict)
+  
+  billingAddressId  String?        @map("billing_address_id")
+  billingAddress    Address?       @relation("CheckoutBillingAddress", fields: [billingAddressId], references: [id], onDelete: Restrict)
+  
+  deliveryOption    String?        @map("delivery_option")
+  deliveryAmountPaise Int?         @map("delivery_amount_paise")
+  
+  // Pricing snapshot
+  subtotalPaise     Int            @map("subtotal_paise")
+  taxAmountPaise    Int            @default(0) @map("tax_amount_paise")
+  totalAmountPaise  Int            @map("total_amount_paise")
+  
+  expiresAt         DateTime       @map("expires_at")
+  createdAt         DateTime       @default(now()) @map("created_at")
+  updatedAt         DateTime       @updatedAt @map("updated_at")
+
+  @@index([customerId])
+  @@index([sessionId])
+  @@index([status])
+  @@map("checkout_sessions")
+}
 

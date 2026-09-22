@@ -3,6 +3,7 @@
 import {
   addItemToCart,
   updateCartItemQuantity,
+  updateCartItemConfiguration,
   removeCartItem,
   clearCart,
   getCartWithFreshPricing,
@@ -11,6 +12,7 @@ import {
   type StorefrontCartView,
 } from "@/lib/cart/cart-service";
 import { ValidationError, UnauthorizedError } from "@/lib/errors";
+import { type DimensionUnit } from "@/lib/pricing/pricing-engine";
 
 export interface CartActionResult {
   success: boolean;
@@ -56,6 +58,28 @@ export async function updateCartQuantityAction(
     return {
       success: false,
       error: error instanceof Error ? error.message : "Failed to update item quantity.",
+    };
+  }
+}
+
+export async function updateCartConfigurationAction(
+  itemId: string,
+  updates: { width?: number; height?: number; unit?: DimensionUnit; options?: Record<string, unknown> }
+): Promise<CartActionResult> {
+  try {
+    const cart = await updateCartItemConfiguration(itemId, updates);
+    return {
+      success: true,
+      cart,
+      totalItems: cart.totalItems,
+    };
+  } catch (error) {
+    if (error instanceof ValidationError || error instanceof UnauthorizedError) {
+      return { success: false, error: error.message };
+    }
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Failed to update item configuration.",
     };
   }
 }

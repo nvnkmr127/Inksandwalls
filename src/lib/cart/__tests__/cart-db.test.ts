@@ -7,6 +7,7 @@ import {
   clearCart,
   getCartWithFreshPricing,
   getCartItemCount,
+  updateCartItemConfiguration,
   GUEST_CART_COOKIE_NAME,
   type CookieStoreLike,
 } from "../cart-service";
@@ -222,6 +223,7 @@ export async function runCartDatabaseServiceTests() {
     cartItemDeleteMany: prisma.cartItem.deleteMany,
     cartItemAggregate: prisma.cartItem.aggregate,
     productFindFirst: prisma.product.findFirst,
+    transaction: prisma.$transaction,
   };
 
   // Mock Prisma Implementations
@@ -233,6 +235,17 @@ export async function runCartDatabaseServiceTests() {
     const newCust: MockCustomer = { id: `cust_${Date.now()}_${Math.random()}`, userId: args.data.userId };
     dbCustomers.push(newCust);
     return newCust;
+  };
+
+  (prisma.$transaction as unknown) = async (cb: any) => {
+    if (Array.isArray(cb)) {
+      const results = [];
+      for (const op of cb) {
+        results.push(await op);
+      }
+      return results;
+    }
+    return cb(prisma);
   };
 
   (prisma.cart.findFirst as unknown) = async (args: {
@@ -287,25 +300,49 @@ export async function runCartDatabaseServiceTests() {
   };
 
   (prisma.cartItem.findFirst as unknown) = async (args: {
-    where: { id: string; cartId: string };
-    include?: { product?: { select?: { isActive?: boolean } } };
+    where: { id?: string | { not: string }; cartId?: string; configHash?: string };
+    include?: Record<string, unknown>;
   }) => {
-    const item = dbCartItems.find((i) => i.id === args.where.id && i.cartId === args.where.cartId);
+    const item = dbCartItems.find((i) => {
+      if (args.where.id) {
+        if (typeof args.where.id === "string" && i.id !== args.where.id) return false;
+        if (typeof args.where.id === "object" && args.where.id.not && i.id === args.where.id.not) return false;
+      }
+      if (args.where.cartId && i.cartId !== args.where.cartId) return false;
+      if (args.where.configHash && i.configHash !== args.where.configHash) return false;
+      return true;
+    });
     if (!item) return null;
-    const prod = dbProducts.find((p) => p.id === item.productId);
-    return {
-      ...item,
-      product: { isActive: prod ? prod.isActive : true },
-    };
+    if (args.include?.product) {
+      const prod = dbProducts.find((p) => p.id === item.productId);
+      return {
+        ...item,
+        product: prod || { isActive: true },
+      };
+    }
+    return item;
   };
 
   (prisma.cartItem.findUnique as unknown) = async (args: {
-    where: { cartId_configHash: { cartId: string; configHash: string } };
+    where: { cartId_configHash?: { cartId: string; configHash: string }; id?: string };
+    include?: { product?: boolean };
   }) => {
-    const item = dbCartItems.find(
-      (i) => i.cartId === args.where.cartId_configHash.cartId && i.configHash === args.where.cartId_configHash.configHash
-    );
+    let item;
+    if (args.where.cartId_configHash) {
+      item = dbCartItems.find(
+        (i) => i.cartId === args.where.cartId_configHash!.cartId && i.configHash === args.where.cartId_configHash!.configHash
+      );
+    } else if (args.where.id) {
+      item = dbCartItems.find((i) => i.id === args.where.id);
+    }
+    
     if (!item) return null;
+
+    if (args.include?.product) {
+      const prod = dbProducts.find((p) => p.id === item.productId);
+      return { ...item, product: prod || null };
+    }
+
     return { ...item };
   };
 
@@ -756,6 +793,76 @@ export async function runCartDatabaseServiceTests() {
     const emptyCount = await getCartItemCount(emptyFreshStore, null);
     assert.strictEqual(emptyCount, 0, "Empty count must return 0 without creating cart");
 
+    // -------------------------------------------------------------
+    // Test 16: Update Cart Item Configuration
+    // -------------------------------------------------------------
+    console.log("  16. Testing Update Cart Item Configuration...");
+    const cartBeforeConfigUpdate = await addItemToCart(
+      {
+        productId: "prod-mural-1",
+        productType: "PER_AREA",
+        width: 10,
+        height: 8,
+        unit: "ft",
+        quantity: 1,
+      },
+      guestStore,
+      null
+    );
+    const itemToUpdateConfig = cartBeforeConfigUpdate.items.find(
+      (i) => i.productId === "prod-mural-1" && i.dimensions?.width === 10
+    );
+    
+    assert(itemToUpdateConfig, "Item to update configuration must exist");
+
+    const cartAfterConfigUpdate = await updateCartItemConfiguration(
+      itemToUpdateConfig.id,
+      { width: 12, height: 10, unit: "ft" },
+      guestStore,
+      null
+    );
+
+    const updatedConfigItem = cartAfterConfigUpdate.items.find(
+      (i) => i.productId === "prod-mural-1" && i.dimensions?.width === 12
+    );
+    
+    assert(updatedConfigItem, "Item configuration must be updated to new dimensions");
+    assert.strictEqual(updatedConfigItem.dimensions?.width, 12, "Width must be 12");
+    assert.strictEqual(updatedConfigItem.dimensions?.height, 10, "Height must be 10");
+    // 12x10 = 120 sqft + 10% wastage = 132 sqft. Rate 20000 -> 2640000 paise.
+    assert.strictEqual(updatedConfigItem.unitPricePaise, 2640000, "Price must be recalculated");
+
+    // Test merging identical configs when updating configuration
+    const cartWithIdenticalConfig = await addItemToCart(
+      {
+        productId: "prod-mural-1",
+        productType: "PER_AREA",
+        width: 15,
+        height: 10,
+        unit: "ft",
+        quantity: 1,
+      },
+      guestStore,
+      null
+    );
+
+    const itemToMerge = cartWithIdenticalConfig.items.find(
+      (i) => i.dimensions?.width === 15
+    );
+    
+    assert(itemToMerge, "Item to merge must exist");
+
+    const mergedCart = await updateCartItemConfiguration(
+      itemToMerge.id,
+      { width: 12, height: 10, unit: "ft" }, // Match updatedConfigItem
+      guestStore,
+      null
+    );
+
+    const mergedItem = mergedCart.items.find((i) => i.dimensions?.width === 12);
+    assert.strictEqual(mergedItem?.quantity, 2, "Identical config must merge and add quantities");
+    assert(!mergedCart.items.find((i) => i.id === itemToMerge.id), "Original item should be deleted after merging");
+
     console.log("  ✔ All Cart Database Service tests passed successfully!");
   } finally {
     // Restore original prisma methods
@@ -773,5 +880,6 @@ export async function runCartDatabaseServiceTests() {
     prisma.cartItem.deleteMany = origPrisma.cartItemDeleteMany;
     prisma.cartItem.aggregate = origPrisma.cartItemAggregate;
     prisma.product.findFirst = origPrisma.productFindFirst;
+    prisma.$transaction = origPrisma.transaction;
   }
 }

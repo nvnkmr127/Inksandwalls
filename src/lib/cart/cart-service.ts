@@ -261,20 +261,11 @@ export async function mergeGuestCartIntoCustomer(
     return;
   }
 
-  // Find or create customer's active cart
-  let customerCart = await prisma.cart.findFirst({
-    where: {
-      customerId,
-      status: CartStatus.ACTIVE,
-    },
-    include: {
-      items: true,
-    },
-  });
-
-  if (!customerCart) {
-    customerCart = await prisma.cart.create({
-      data: {
+  // Use a transaction for safety
+  await prisma.$transaction(async (tx) => {
+    // Find or create customer's active cart
+    let customerCart = await tx.cart.findFirst({
+      where: {
         customerId,
         status: CartStatus.ACTIVE,
       },
@@ -282,73 +273,85 @@ export async function mergeGuestCartIntoCustomer(
         items: true,
       },
     });
-  }
 
-  // Merge each guest item
-  for (const guestItem of guestCart.items) {
-    const existingCustomerItem = (customerCart.items || []).find(
-      (item) => item.configHash === guestItem.configHash
-    );
-
-    if (existingCustomerItem) {
-      const combinedQty = Math.min(99, existingCustomerItem.quantity + guestItem.quantity);
-      await prisma.cartItem.update({
-        where: { id: existingCustomerItem.id },
+    if (!customerCart) {
+      customerCart = await tx.cart.create({
         data: {
-          quantity: combinedQty,
-          totalPricePaise: existingCustomerItem.unitPricePaise * combinedQty,
+          customerId,
+          status: CartStatus.ACTIVE,
         },
-      });
-    } else {
-      await prisma.cartItem.create({
-        data: {
-          cartId: customerCart.id,
-          productId: guestItem.productId,
-          productName: guestItem.productName,
-          productType: guestItem.productType,
-          variantId: guestItem.variantId,
-          variantName: guestItem.variantName,
-          sku: guestItem.sku,
-          width: guestItem.width,
-          height: guestItem.height,
-          unit: guestItem.unit,
-          widthFt: guestItem.widthFt,
-          heightFt: guestItem.heightFt,
-          enteredAreaSqft: guestItem.enteredAreaSqft,
-          wastagePct: guestItem.wastagePct,
-          wastageAreaSqft: guestItem.wastageAreaSqft,
-          areaWithWastageSqft: guestItem.areaWithWastageSqft,
-          minAreaSqft: guestItem.minAreaSqft,
-          isMinAreaApplied: guestItem.isMinAreaApplied,
-          billableAreaSqft: guestItem.billableAreaSqft,
-          rollWidthFt: guestItem.rollWidthFt,
-          panelsNeeded: guestItem.panelsNeeded,
-          ratePaise: guestItem.ratePaise,
-          unitPricePaise: guestItem.unitPricePaise,
-          quantity: guestItem.quantity,
-          totalPricePaise: guestItem.totalPricePaise,
-          options: guestItem.options ? (guestItem.options as unknown as Prisma.InputJsonValue) : Prisma.JsonNull,
-          mediaKey: guestItem.mediaKey,
-          returnable: guestItem.returnable,
-          hsnCode: guestItem.hsnCode,
-          configHash: guestItem.configHash,
+        include: {
+          items: true,
         },
       });
     }
-  }
 
-  // Retire the guest cart
-  await prisma.cart.update({
-    where: { id: guestCart.id },
-    data: {
-      status: CartStatus.CONVERTED,
-      sessionId: null,
-    },
+    // Merge each guest item
+    for (const guestItem of guestCart.items) {
+      const existingCustomerItem = (customerCart.items || []).find(
+        (item) => item.configHash === guestItem.configHash
+      );
+
+      if (existingCustomerItem) {
+        const combinedQty = Math.min(99, existingCustomerItem.quantity + guestItem.quantity);
+        await tx.cartItem.update({
+          where: { id: existingCustomerItem.id },
+          data: {
+            quantity: combinedQty,
+            totalPricePaise: existingCustomerItem.unitPricePaise * combinedQty,
+          },
+        });
+      } else {
+        await tx.cartItem.create({
+          data: {
+            cartId: customerCart.id,
+            productId: guestItem.productId,
+            productName: guestItem.productName,
+            productType: guestItem.productType,
+            variantId: guestItem.variantId,
+            variantName: guestItem.variantName,
+            sku: guestItem.sku,
+            width: guestItem.width,
+            height: guestItem.height,
+            unit: guestItem.unit,
+            widthFt: guestItem.widthFt,
+            heightFt: guestItem.heightFt,
+            enteredAreaSqft: guestItem.enteredAreaSqft,
+            wastagePct: guestItem.wastagePct,
+            wastageAreaSqft: guestItem.wastageAreaSqft,
+            areaWithWastageSqft: guestItem.areaWithWastageSqft,
+            minAreaSqft: guestItem.minAreaSqft,
+            isMinAreaApplied: guestItem.isMinAreaApplied,
+            billableAreaSqft: guestItem.billableAreaSqft,
+            rollWidthFt: guestItem.rollWidthFt,
+            panelsNeeded: guestItem.panelsNeeded,
+            ratePaise: guestItem.ratePaise,
+            unitPricePaise: guestItem.unitPricePaise,
+            quantity: guestItem.quantity,
+            totalPricePaise: guestItem.totalPricePaise,
+            options: guestItem.options ? (guestItem.options as unknown as Prisma.InputJsonValue) : Prisma.JsonNull,
+            mediaKey: guestItem.mediaKey,
+            returnable: guestItem.returnable,
+            hsnCode: guestItem.hsnCode,
+            configHash: guestItem.configHash,
+          },
+        });
+      }
+    }
+
+    // Retire the guest cart
+    await tx.cart.update({
+      where: { id: guestCart.id },
+      data: {
+        status: CartStatus.CONVERTED,
+        sessionId: null,
+      },
+    });
   });
 
   logger.info("Guest cart merged into customer cart", {
     guestCartId: guestCart.id,
-    customerCartId: customerCart.id,
+    customerId,
     itemCount: guestCart.items.length,
   });
 }
@@ -678,6 +681,130 @@ export async function clearCart(
   await prisma.cartItem.deleteMany({
     where: { cartId: cart.id },
   });
+
+  return await getCartWithFreshPricing(customStore, customUser);
+}
+
+/**
+ * Update the configuration of a specific PER_AREA cart item.
+ * Strictly verifies cart ownership.
+ */
+export async function updateCartItemConfiguration(
+  itemId: string,
+  updates: { width?: number; height?: number; unit?: DimensionUnit; options?: Record<string, unknown> },
+  customStore?: CookieStoreLike,
+  customUser?: CurrentUser | null
+): Promise<StorefrontCartView> {
+  const { cart } = await getOrCreateActiveCart(customStore, customUser);
+
+  const item = await prisma.cartItem.findFirst({
+    where: {
+      id: itemId,
+      cartId: cart.id, // Strict ownership guard
+    },
+    include: {
+      product: true,
+    },
+  });
+
+  if (!item) {
+    throw new UnauthorizedError("Cart item not found or you do not have permission to update it.");
+  }
+
+  if (item.productType !== ProductType.PER_AREA) {
+    throw new ValidationError("Configuration update is only supported for custom-sized products.");
+  }
+
+  if (!item.product.isActive) {
+    throw new ValidationError("This product is currently inactive and cannot be updated.");
+  }
+
+  const width = updates.width ?? item.width ?? 0;
+  const height = updates.height ?? item.height ?? 0;
+  const unit = updates.unit ?? (item.unit as DimensionUnit) ?? "ft";
+  const options = updates.options ?? (item.options as Record<string, unknown> | null) ?? undefined;
+
+  const dimValidation = validateDimensions(width, height, unit);
+  if (!dimValidation.isValid || !dimValidation.sanitizedWidth || !dimValidation.sanitizedHeight || !dimValidation.sanitizedUnit) {
+    throw new ValidationError(dimValidation.error || "Invalid dimensions provided.");
+  }
+
+  if (!item.product.rate || item.product.rate <= 0) {
+    throw new ValidationError("Product rate is not configured.");
+  }
+
+  const pricing = calculatePerAreaPricing({
+    width: dimValidation.sanitizedWidth,
+    height: dimValidation.sanitizedHeight,
+    unit: dimValidation.sanitizedUnit,
+    ratePaise: item.product.rate,
+    wastagePct: item.product.wastage,
+    minAreaSqft: item.product.minArea,
+    rollWidthFt: item.product.rollWidth,
+    quantity: item.quantity,
+  });
+
+  const configHash = computeConfigurationHash({
+    productId: item.productId,
+    productType: item.productType,
+    variantId: item.variantId,
+    width: pricing.width,
+    height: pricing.height,
+    unit: pricing.unit,
+    options,
+  });
+
+  // Check if target configuration already exists in the cart
+  const existing = await prisma.cartItem.findFirst({
+    where: {
+      cartId: cart.id,
+      configHash,
+      id: { not: item.id },
+    },
+  });
+
+  if (existing) {
+    // Merge into the existing item
+    const updatedQty = Math.min(99, existing.quantity + item.quantity);
+    await prisma.$transaction([
+      prisma.cartItem.update({
+        where: { id: existing.id },
+        data: {
+          quantity: updatedQty,
+          totalPricePaise: pricing.unitPricePaise * updatedQty,
+        },
+      }),
+      prisma.cartItem.delete({
+        where: { id: item.id },
+      }),
+    ]);
+  } else {
+    // Update the current item in place
+    await prisma.cartItem.update({
+      where: { id: item.id },
+      data: {
+        width: pricing.width,
+        height: pricing.height,
+        unit: pricing.unit,
+        widthFt: pricing.widthFt,
+        heightFt: pricing.heightFt,
+        enteredAreaSqft: pricing.enteredAreaSqft,
+        wastagePct: pricing.wastagePct,
+        wastageAreaSqft: pricing.wastageAreaSqft,
+        areaWithWastageSqft: pricing.areaWithWastageSqft,
+        minAreaSqft: pricing.minAreaSqft,
+        isMinAreaApplied: pricing.isMinAreaApplied,
+        billableAreaSqft: pricing.billableAreaSqft,
+        rollWidthFt: pricing.rollWidthFt,
+        panelsNeeded: pricing.panelsNeeded,
+        ratePaise: pricing.ratePaise,
+        unitPricePaise: pricing.unitPricePaise,
+        totalPricePaise: pricing.totalPricePaise,
+        options: options ? (options as unknown as Prisma.InputJsonValue) : Prisma.JsonNull,
+        configHash,
+      },
+    });
+  }
 
   return await getCartWithFreshPricing(customStore, customUser);
 }
