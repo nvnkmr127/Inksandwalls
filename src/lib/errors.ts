@@ -45,6 +45,7 @@ export class AuthError extends AppError {
     super(message, "UNAUTHENTICATED", 401, true);
   }
 }
+export { AuthError as UnauthorizedError };
 
 export class ForbiddenError extends AppError {
   constructor(message: string = "Access denied") {

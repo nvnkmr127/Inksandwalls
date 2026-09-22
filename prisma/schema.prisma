@@ -81,6 +81,7 @@ model Customer {
   updatedAt DateTime   @updatedAt @map("updated_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  carts Cart[]
 
   @@map("customers")
 }
@@ -155,6 +156,7 @@ model Product {
   
   variants    ProductVariant[]
   media       ProductMedia[]
+  cartItems   CartItem[]
 
   createdAt   DateTime    @default(now()) @map("created_at")
   updatedAt   DateTime    @updatedAt @map("updated_at")
@@ -178,6 +180,7 @@ model ProductVariant {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  cartItems CartItem[]
 
   @@index([productId])
   @@index([sku])
@@ -226,4 +229,86 @@ model ProductMedia {
   @@index([productId, sortOrder])
   @@map("product_media")
 }
+
+enum CartStatus {
+  ACTIVE
+  CONVERTED
+  ABANDONED
+}
+
+model Cart {
+  id          String      @id @default(cuid())
+  sessionId   String?     @unique @map("session_id") // Guest session identifier
+  customerId  String?     @map("customer_id")
+  customer    Customer?   @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  status      CartStatus  @default(ACTIVE)
+  email       String?
+  phone       String?
+  items       CartItem[]
+  createdAt   DateTime    @default(now()) @map("created_at")
+  updatedAt   DateTime    @updatedAt @map("updated_at")
+
+  @@index([sessionId])
+  @@index([customerId])
+  @@index([status])
+  @@map("carts")
+}
+
+model CartItem {
+  id                  String         @id @default(cuid())
+  cartId              String         @map("cart_id")
+  cart                Cart           @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  
+  productId           String         @map("product_id")
+  product             Product        @relation(fields: [productId], references: [id], onDelete: Restrict)
+  productName         String         @map("product_name")
+  productType         ProductType    @map("product_type")
+  
+  variantId           String?        @map("variant_id")
+  variant             ProductVariant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
+  variantName         String?        @map("variant_name")
+  sku                 String?
+  
+  // PER_AREA dimensions & calculation snapshot
+  width               Float?
+  height              Float?
+  unit                String?
+  widthFt             Float?         @map("width_ft")
+  heightFt            Float?         @map("height_ft")
+  enteredAreaSqft     Float?         @map("entered_area_sqft")
+  wastagePct          Float?         @map("wastage_pct")
+  wastageAreaSqft     Float?         @map("wastage_area_sqft")
+  areaWithWastageSqft Float?         @map("area_with_wastage_sqft")
+  minAreaSqft         Float?         @map("min_area_sqft")
+  isMinAreaApplied    Boolean?       @map("is_min_area_applied")
+  billableAreaSqft    Float?         @map("billable_area_sqft")
+  rollWidthFt         Float?         @map("roll_width_ft")
+  panelsNeeded        Int?           @map("panels_needed")
+  ratePaise           Int?           @map("rate_paise") // minor units per sqft
+  
+  // Pricing & Quantity (authoritative integer minor units)
+  unitPricePaise      Int            @map("unit_price_paise")
+  quantity            Int            @default(1)
+  totalPricePaise     Int            @map("total_price_paise")
+  
+  // Configuration snapshots & Media
+  options             Json?
+  mediaKey            String?        @map("media_key")
+  returnable          Boolean        @default(true)
+  hsnCode             String?        @map("hsn_code")
+  
+  // Deterministic configuration identity hash
+  configHash          String         @map("config_hash")
+  
+  createdAt           DateTime       @default(now()) @map("created_at")
+  updatedAt           DateTime       @updatedAt @map("updated_at")
+
+  @@unique([cartId, configHash])
+  @@index([cartId])
+  @@index([productId])
+  @@index([variantId])
+  @@index([configHash])
+  @@map("cart_items")
+}
+
 

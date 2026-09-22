@@ -8,6 +8,7 @@ import { siteConfig } from "@/config/site";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { AuthStatus } from "@/components/auth/AuthStatus";
+import { useCartCount } from "@/lib/cart/cart-events";
 import {
   Sheet,
   SheetContent,
@@ -25,6 +26,7 @@ export function Header({ categories = [], collections = [] }: HeaderProps) {
   const [isOpen, setIsOpen] = React.useState(false);
   const [isSearchOpen, setIsSearchOpen] = React.useState(false);
   const [searchQuery, setSearchQuery] = React.useState("");
+  const cartCount = useCartCount();
   const router = useRouter();
 
   const handleSearchSubmit = (e: React.FormEvent) => {
@@ -130,9 +132,17 @@ export function Header({ categories = [], collections = [] }: HeaderProps) {
               variant="ghost"
               size="icon"
               aria-label="View shopping cart"
-              className="h-9 w-9 text-muted-foreground hover:text-foreground"
+              className="relative h-9 w-9 text-muted-foreground hover:text-foreground"
             >
               <ShoppingBag className="h-4 w-4" />
+              {cartCount > 0 && (
+                <span
+                  id="header-cart-count"
+                  className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold text-primary-foreground leading-none"
+                >
+                  {cartCount > 99 ? "99+" : cartCount}
+                </span>
+              )}
             </Button>
           </Link>
 
@@ -147,9 +157,17 @@ export function Header({ categories = [], collections = [] }: HeaderProps) {
               variant="ghost"
               size="icon"
               aria-label="View shopping cart"
-              className="h-9 w-9 text-muted-foreground hover:text-foreground"
+              className="relative h-9 w-9 text-muted-foreground hover:text-foreground"
             >
               <ShoppingBag className="h-5 w-5" />
+              {cartCount > 0 && (
+                <span
+                  id="mobile-header-cart-count"
+                  className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold text-primary-foreground leading-none"
+                >
+                  {cartCount > 99 ? "99+" : cartCount}
+                </span>
+              )}
             </Button>
           </Link>
 

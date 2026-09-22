@@ -31,6 +31,44 @@ export interface StorefrontProductListingItem {
   }>;
 }
 
+export interface StorefrontProductDetail {
+  id: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  productType: ProductType;
+  price: number | null;
+  rate: number | null;
+  wastage: number | null;
+  minArea: number | null;
+  rollWidth: number | null;
+  returnable: boolean;
+  hsnCode: string | null;
+  category: {
+    id: string;
+    name: string;
+    slug: string;
+    description: string | null;
+  };
+  media: Array<{
+    id: string;
+    objectKey: string;
+    altText: string | null;
+    width: number | null;
+    height: number | null;
+    isPrimary: boolean;
+    sortOrder: number;
+  }>;
+  variants: Array<{
+    id: string;
+    name: string;
+    sku: string | null;
+    price: number;
+    isActive: boolean;
+    sortOrder: number;
+  }>;
+}
+
 export interface StorefrontProductsQueryOptions {
   search?: string;
   category?: string;
@@ -269,3 +307,94 @@ export async function getStorefrontProducts(
     activeCollection,
   };
 }
+
+/**
+ * Server-side product detail query for PDP.
+ * Enforces:
+ * - Active product only (isActive = true).
+ * - Full media gallery sorted by isPrimary DESC, sortOrder ASC.
+ * - Active variants only (isActive = true) sorted by sortOrder ASC.
+ * - Category metadata.
+ * - Zero N+1 queries.
+ */
+export async function getStorefrontProductBySlug(
+  slug: string
+): Promise<StorefrontProductDetail | null> {
+  const normalizedSlug = typeof slug === "string" ? slug.trim().toLowerCase() : "";
+  if (!normalizedSlug) {
+    return null;
+  }
+
+  try {
+    const product = await prisma.product.findFirst({
+      where: {
+        slug: normalizedSlug,
+        isActive: true, // Strict storefront guard: never expose inactive/draft products
+      },
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+        description: true,
+        productType: true,
+        price: true,
+        rate: true,
+        wastage: true,
+        minArea: true,
+        rollWidth: true,
+        returnable: true,
+        hsnCode: true,
+        category: {
+          select: {
+            id: true,
+            name: true,
+            slug: true,
+            description: true,
+          },
+        },
+        media: {
+          orderBy: [
+            { isPrimary: "desc" },
+            { sortOrder: "asc" },
+            { createdAt: "asc" },
+          ],
+          select: {
+            id: true,
+            objectKey: true,
+            altText: true,
+            width: true,
+            height: true,
+            isPrimary: true,
+            sortOrder: true,
+          },
+        },
+        variants: {
+          where: {
+            isActive: true,
+          },
+          orderBy: [
+            { sortOrder: "asc" },
+            { createdAt: "asc" },
+          ],
+          select: {
+            id: true,
+            name: true,
+            sku: true,
+            price: true,
+            isActive: true,
+            sortOrder: true,
+          },
+        },
+      },
+    });
+
+    return product;
+  } catch (error) {
+    logger.error("Failed to load storefront product by slug", {
+      slug: normalizedSlug,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return null;
+  }
+}
+
