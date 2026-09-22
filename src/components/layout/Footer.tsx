@@ -1,9 +1,14 @@
-import * as React from "react"
-import Link from "next/link"
-import { siteConfig } from "@/config/site"
-import { Separator } from "@/components/ui/separator"
+import * as React from "react";
+import Link from "next/link";
+import { siteConfig } from "@/config/site";
+import { Separator } from "@/components/ui/separator";
 
-export function Footer() {
+export interface FooterProps {
+  categories?: Array<{ id: string; name: string; slug: string }>;
+  collections?: Array<{ id: string; name: string; slug: string }>;
+}
+
+export function Footer({ categories = [], collections = [] }: FooterProps) {
   return (
     <footer className="w-full border-t bg-muted/40 text-muted-foreground">
       <div className="container max-w-7xl px-4 py-12 sm:px-6 lg:px-8 lg:py-16">
@@ -16,43 +21,78 @@ export function Footer() {
             <p className="text-sm leading-relaxed text-muted-foreground">
               {siteConfig.description}
             </p>
+            <p className="text-xs text-muted-foreground">
+              Precision custom-cut wallpapers, acoustic murals, and fine art prints.
+            </p>
           </div>
 
-          {/* Explore Links */}
+          {/* Catalog & Categories */}
           <div className="space-y-4">
             <h4 className="text-sm font-semibold tracking-wider uppercase text-foreground">
-              Explore
+              Catalogue
             </h4>
-            <ul className="space-y-2.5 text-sm">
-              {siteConfig.footerLinks.explore.map((item) => (
-                <li key={item.label}>
+            <ul className="space-y-2 text-sm">
+              <li>
+                <Link
+                  href="/products"
+                  className="transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm font-medium"
+                >
+                  All Products
+                </Link>
+              </li>
+              {categories.slice(0, 5).map((cat) => (
+                <li key={cat.id}>
                   <Link
-                    href={item.href}
+                    href={`/products?category=${cat.slug}`}
                     className="transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
                   >
-                    {item.label}
+                    {cat.name}
+                  </Link>
+                </li>
+              ))}
+              {collections.slice(0, 3).map((col) => (
+                <li key={col.id}>
+                  <Link
+                    href={`/products?collection=${col.slug}`}
+                    className="transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
+                  >
+                    {col.name}
                   </Link>
                 </li>
               ))}
             </ul>
           </div>
 
-          {/* Customer Support Links */}
+          {/* Customer Care */}
           <div className="space-y-4">
             <h4 className="text-sm font-semibold tracking-wider uppercase text-foreground">
               Customer Care
             </h4>
-            <ul className="space-y-2.5 text-sm">
-              {siteConfig.footerLinks.support.map((item) => (
-                <li key={item.label}>
-                  <Link
-                    href={item.href}
-                    className="transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
-                  >
-                    {item.label}
-                  </Link>
-                </li>
-              ))}
+            <ul className="space-y-2 text-sm">
+              <li>
+                <Link
+                  href="/account"
+                  className="transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
+                >
+                  My Account
+                </Link>
+              </li>
+              <li>
+                <Link
+                  href="/login"
+                  className="transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
+                >
+                  Sign In
+                </Link>
+              </li>
+              <li>
+                <Link
+                  href="/cart"
+                  className="transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
+                >
+                  Shopping Cart
+                </Link>
+              </li>
             </ul>
           </div>
 
@@ -74,18 +114,21 @@ export function Footer() {
         <div className="flex flex-col items-center justify-between gap-4 text-xs sm:flex-row">
           <p>© {new Date().getFullYear()} {siteConfig.name}. All rights reserved.</p>
           <div className="flex gap-6">
-            {siteConfig.footerLinks.legal.map((item) => (
-              <Link
-                key={item.label}
-                href={item.href}
-                className="transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
-              >
-                {item.label}
-              </Link>
-            ))}
+            <Link
+              href="/"
+              className="transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
+            >
+              Terms of Service
+            </Link>
+            <Link
+              href="/"
+              className="transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
+            >
+              Privacy Policy
+            </Link>
           </div>
         </div>
       </div>
     </footer>
-  )
+  );
 }

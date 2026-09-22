@@ -3,9 +3,7 @@ export const siteConfig = {
   description: "Bespoke Wallpapers, Blinds & Custom Wall Art",
   navLinks: [
     { label: "Home", href: "/" },
-    { label: "Catalogue", href: "#" },
-    { label: "About", href: "#" },
-    { label: "Contact", href: "#" },
+    { label: "Catalogue", href: "/products" },
   ],
   footerLinks: {
     explore: [
