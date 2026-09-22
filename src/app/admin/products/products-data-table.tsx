@@ -6,7 +6,7 @@ import { DataTable, ColumnDef, SortDirection } from "@/components/data-table/dat
 import { FilterOption } from "@/components/data-table/data-table-toolbar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Edit2, Trash2, Power, Layers } from "lucide-react";
+import { Edit2, Trash2, Power, Layers, Image as ImageIcon } from "lucide-react";
 
 export interface ProductCategorySummary {
   id: string;
@@ -228,6 +228,13 @@ export function ProductsDataTable({
       header: "Actions",
       cell: (row) => (
         <div className="flex items-center gap-1">
+          <Link
+            href={`/admin/products/${row.id}/media`}
+            title="Manage product media"
+            className="inline-flex items-center justify-center h-8 w-8 rounded-md text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 transition-colors"
+          >
+            <ImageIcon className="h-4 w-4" />
+          </Link>
           {row.productType === "FIXED" ? (
             <Link
               href={`/admin/products/${row.id}/variants`}

@@ -1,6 +1,8 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
+import { Image as ImageIcon } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -516,18 +518,29 @@ export function ProductFormModal({
             </div>
           </div>
 
-          <DialogFooter className="pt-4">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => onOpenChange(false)}
-              disabled={isSubmitting}
-            >
-              Cancel
-            </Button>
-            <Button type="submit" isLoading={isSubmitting}>
-              {isEditing ? "Save Changes" : "Create Product"}
-            </Button>
+          <DialogFooter className="pt-4 flex items-center justify-between sm:justify-between w-full">
+            {isEditing && product?.id ? (
+              <Link
+                href={`/admin/products/${product.id}/media`}
+                className="inline-flex items-center justify-center rounded-md border border-input bg-background px-3 py-2 text-sm font-medium hover:bg-accent hover:text-accent-foreground text-emerald-600 transition-colors mr-auto"
+              >
+                <ImageIcon className="h-4 w-4 mr-1.5" />
+                Manage Media
+              </Link>
+            ) : <div />}
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => onOpenChange(false)}
+                disabled={isSubmitting}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" isLoading={isSubmitting}>
+                {isEditing ? "Save Changes" : "Create Product"}
+              </Button>
+            </div>
           </DialogFooter>
         </form>
       </DialogContent>

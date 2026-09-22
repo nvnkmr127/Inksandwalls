@@ -44,8 +44,13 @@ export function VariantFormModal({
   // Inline error state
   const [errors, setErrors] = React.useState<Record<string, string>>({});
 
-  // Reset or initialize form data when modal opens or variant changes
-  React.useEffect(() => {
+  const [prevOpen, setPrevOpen] = React.useState(open);
+  const [prevVariant, setPrevVariant] = React.useState(variant);
+
+  // Sync form state when modal opens or target variant changes
+  if (open !== prevOpen || variant !== prevVariant) {
+    setPrevOpen(open);
+    setPrevVariant(variant);
     if (open) {
       setErrors({});
       if (variant) {
@@ -62,7 +67,7 @@ export function VariantFormModal({
         setSortOrder("0");
       }
     }
-  }, [open, variant]);
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

@@ -26,6 +26,14 @@ export function validateProductVariantInput(input: unknown): ValidatedProductVar
 
   const raw = input as Record<string, unknown>;
 
+  // Reject unexpected fields
+  const allowedKeys = new Set(["name", "sku", "price", "isActive", "sortOrder"]);
+  for (const key of Object.keys(raw)) {
+    if (!allowedKeys.has(key)) {
+      throw new ValidationError(`Unexpected field: '${key}'.`);
+    }
+  }
+
   // 1. Name validation
   if (typeof raw.name !== "string" || !raw.name.trim()) {
     throw new ValidationError("Variant name is required.");

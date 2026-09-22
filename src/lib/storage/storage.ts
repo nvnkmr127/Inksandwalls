@@ -60,6 +60,10 @@ export async function deleteObject(key: string): Promise<boolean> {
     throw new Error("Invalid object key provided for deletion.");
   }
 
+  if (!isR2Configured()) {
+    return true;
+  }
+
   const r2 = getR2Client();
   const bucketName = getR2BucketName();
 

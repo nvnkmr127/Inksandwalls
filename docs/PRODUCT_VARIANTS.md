@@ -58,6 +58,12 @@ model ProductVariant {
 - Deleting a parent `Product` automatically cascades (`onDelete: Cascade`) to its child variants.
 - All variant mutation endpoints verify that the target variant actually belongs to the `productId` specified in the route, preventing cross-resource manipulation (IDOR).
 
+## Delete Behavior & Transactional Safety
+
+- **Hard Deletion**: Administrative deletion removes the variant record from `product_variants` within a transaction that logs `PRODUCT_VARIANT_DELETED`.
+- **Soft Deactivation (`isActive = false`)**: Admins can toggle status to Inactive, retaining configuration history while hiding the variant from future storefront offerings.
+- **Future Transactional Safeguards**: When transactional records (`CartLine`, `Order`) are introduced in subsequent phases (Phase 06 & 07), variants referenced by placed orders will be protected from hard deletion via foreign key constraints (`onDelete: Restrict`), requiring archival via deactivation (`isActive: false`).
+
 ## Authorization & RBAC
 
 All Product Variant management endpoints are protected server-side:

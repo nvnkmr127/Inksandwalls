@@ -44,3 +44,28 @@ export function generateObjectKey({
 export function generateMediaId(): string {
   return crypto.randomBytes(12).toString("hex");
 }
+
+export interface ProductMediaKeyParams {
+  productId: string;
+  mediaId: string;
+  variant: string;
+  format: string;
+}
+
+/**
+  Generates deterministic, safe R2 object keys for product media.
+  Format: products/{productId}/media/{mediaId}/{variant}.{format}
+ */
+export function generateProductMediaKey({
+  productId,
+  mediaId,
+  variant,
+  format,
+}: ProductMediaKeyParams): string {
+  const safeProductId = sanitizeKeySegment(productId);
+  const safeMediaId = sanitizeKeySegment(mediaId);
+  const safeVariant = sanitizeKeySegment(variant) || "default";
+  const safeFormat = sanitizeKeySegment(format) || "webp";
+
+  return `products/${safeProductId}/media/${safeMediaId}/${safeVariant}.${safeFormat}`;
+}
