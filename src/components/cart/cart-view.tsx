@@ -35,6 +35,7 @@ export function CartView({ initialCart }: CartViewProps) {
   const [updatingItemId, setUpdatingItemId] = useState<string | null>(null);
   const [isClearing, setIsClearing] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [checkoutNotice, setCheckoutNotice] = useState<string | null>(null);
   const [, startTransition] = useTransition();
 
   const handleUpdateQuantity = (itemId: string, newQty: number) => {
@@ -166,6 +167,23 @@ export function CartView({ initialCart }: CartViewProps) {
             Pricing for one or more items was updated to reflect current catalog
             rates.
           </p>
+        </div>
+      )}
+
+      {checkoutNotice && (
+        <div className="flex items-center justify-between gap-3 p-4 rounded-xl border border-primary/30 bg-primary/10 text-primary text-sm">
+          <div className="flex items-center gap-2">
+            <Info className="h-5 w-5 shrink-0" />
+            <p>{checkoutNotice}</p>
+          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setCheckoutNotice(null)}
+            className="text-xs h-7 px-2"
+          >
+            Dismiss
+          </Button>
         </div>
       )}
 
@@ -383,12 +401,19 @@ export function CartView({ initialCart }: CartViewProps) {
           </Link>
           <Button
             disabled={cart.hasUnavailableItems}
+            onClick={() => {
+              if (!cart.hasUnavailableItems) {
+                setCheckoutNotice(
+                  "Checkout and payment gateway integration will be activated in Micro-Phase 07. All items, configurations, and dimensions in your cart are securely preserved."
+                );
+              }
+            }}
             title={
               cart.hasUnavailableItems
                 ? "Remove unavailable items to proceed"
-                : "Checkout available in Phase 07"
+                : "Proceed to Checkout"
             }
-            className="gap-2 opacity-80 cursor-not-allowed"
+            className="gap-2"
           >
             <span>Proceed to Checkout</span>
             <ArrowRight className="h-4 w-4" />

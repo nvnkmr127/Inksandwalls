@@ -113,7 +113,9 @@ export function computeConfigurationHash(input: {
 
   if (input.options && Object.keys(input.options).length > 0) {
     const sortedKeys = Object.keys(input.options).sort();
-    const normalizedOptions = sortedKeys.map((k) => `${k}:${input.options![k]}`).join(",");
+    const normalizedOptions = sortedKeys
+      .map((k) => `${k}:${JSON.stringify(input.options![k])}`)
+      .join(",");
     parts.push(normalizedOptions);
   }
 
@@ -154,7 +156,11 @@ export async function resolveCartOwner(
     const guestSessionId = cookieStore.get(GUEST_CART_COOKIE_NAME)?.value;
     if (guestSessionId) {
       await mergeGuestCartIntoCustomer(guestSessionId, customer.id);
-      cookieStore.delete(GUEST_CART_COOKIE_NAME);
+      try {
+        cookieStore.delete(GUEST_CART_COOKIE_NAME);
+      } catch {
+        // Ignored in read-only Server Component contexts where cookie mutation is restricted
+      }
     }
 
     return { type: "CUSTOMER", customerId: customer.id };
@@ -164,13 +170,17 @@ export async function resolveCartOwner(
   let sessionId = cookieStore.get(GUEST_CART_COOKIE_NAME)?.value;
   if (!sessionId) {
     sessionId = `gst_${Date.now()}_${createHash("sha256").update(String(Math.random())).digest("hex").substring(0, 16)}`;
-    cookieStore.set(GUEST_CART_COOKIE_NAME, sessionId, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      path: "/",
-      maxAge: 60 * 60 * 24 * 30, // 30 days
-    });
+    try {
+      cookieStore.set(GUEST_CART_COOKIE_NAME, sessionId, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
+        path: "/",
+        maxAge: 60 * 60 * 24 * 30, // 30 days
+      });
+    } catch {
+      // Ignored in read-only Server Component contexts where cookie mutation is restricted
+    }
   }
 
   return { type: "GUEST", sessionId };
@@ -679,7 +689,23 @@ export async function getCartWithFreshPricing(
   customStore?: CookieStoreLike,
   customUser?: CurrentUser | null
 ): Promise<StorefrontCartView> {
-  const { cart, isGuest } = await getOrCreateActiveCart(customStore, customUser);
+  const cookieStore = customStore || (await cookies());
+  const currentUser = customUser !== undefined ? customUser : await getCurrentUser();
+
+  // If unauthenticated guest has no session cookie yet, cart is definitively empty
+  const guestSessionId = cookieStore.get(GUEST_CART_COOKIE_NAME)?.value;
+  if (!currentUser?.id && !guestSessionId) {
+    return {
+      cartId: "",
+      items: [],
+      totalItems: 0,
+      subtotalPaise: 0,
+      hasUnavailableItems: false,
+      isGuest: true,
+    };
+  }
+
+  const { cart, isGuest } = await getOrCreateActiveCart(cookieStore, currentUser);
 
   const dbItems = await prisma.cartItem.findMany({
     where: { cartId: cart.id },
@@ -723,7 +749,7 @@ export async function getCartWithFreshPricing(
 
   for (const item of dbItems) {
     const isProductActive = item.product.isActive;
-    const isVariantActive = item.variant ? item.variant.isActive : true;
+    const isVariantActive = item.variantId ? Boolean(item.variant && item.variant.isActive) : true;
     const isAvailable = isProductActive && isVariantActive;
 
     if (!isAvailable) {
@@ -754,7 +780,7 @@ export async function getCartWithFreshPricing(
             quantity: item.quantity,
           });
 
-          if (freshPricing.unitPricePaise !== item.unitPricePaise) {
+          if (freshPricing.unitPricePaise !== item.unitPricePaise || freshPricing.ratePaise !== item.ratePaise) {
             priceChanged = true;
             authoritativeUnitPrice = freshPricing.unitPricePaise;
             authoritativeRatePaise = freshPricing.ratePaise;
@@ -861,7 +887,15 @@ export async function getCartItemCount(
   customUser?: CurrentUser | null
 ): Promise<number> {
   try {
-    const { cart } = await getOrCreateActiveCart(customStore, customUser);
+    const cookieStore = customStore || (await cookies());
+    const currentUser = customUser !== undefined ? customUser : await getCurrentUser();
+
+    const guestSessionId = cookieStore.get(GUEST_CART_COOKIE_NAME)?.value;
+    if (!currentUser?.id && !guestSessionId) {
+      return 0;
+    }
+
+    const { cart } = await getOrCreateActiveCart(cookieStore, currentUser);
     const result = await prisma.cartItem.aggregate({
       where: { cartId: cart.id },
       _sum: { quantity: true },

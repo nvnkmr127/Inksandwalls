@@ -61,6 +61,35 @@ export async function runCartDatabaseServiceTests() {
   });
   assert.notStrictEqual(hashFixed1, hashFixed2, "Different variants must produce different configHash");
 
+  // Options configuration hashing
+  const hashOptionsA = computeConfigurationHash({
+    productId: "prod-1",
+    productType: "PER_AREA",
+    width: 10,
+    height: 8,
+    unit: "ft",
+    options: { finish: "matte", texture: "canvas" },
+  });
+  const hashOptionsB = computeConfigurationHash({
+    productId: "prod-1",
+    productType: "PER_AREA",
+    width: 10,
+    height: 8,
+    unit: "ft",
+    options: { finish: "gloss", texture: "canvas" },
+  });
+  assert.notStrictEqual(hashOptionsA, hashOptionsB, "Different options must produce different configHash");
+
+  const hashOptionsKeyOrder = computeConfigurationHash({
+    productId: "prod-1",
+    productType: "PER_AREA",
+    width: 10,
+    height: 8,
+    unit: "ft",
+    options: { texture: "canvas", finish: "matte" },
+  });
+  assert.strictEqual(hashOptionsA, hashOptionsKeyOrder, "Same options in different key order must produce identical configHash");
+
   // -------------------------------------------------------------
   // Setup In-Memory Mock Database Tables
   // -------------------------------------------------------------
@@ -600,6 +629,132 @@ export async function runCartDatabaseServiceTests() {
     assert.strictEqual(clearedCart.subtotalPaise, 0, "Cleared cart subtotal must be 0");
     const count = await getCartItemCount(guestStore, customerUser);
     assert.strictEqual(count, 0, "Cart item count must be 0");
+
+    // -------------------------------------------------------------
+    // Test 12: Distinct Options Separation & Client Price Tampering Rejection
+    // -------------------------------------------------------------
+    console.log("  12. Testing Distinct Options Separation & Client Price Tampering Rejection...");
+    const optionsStore = createMockCookieStore();
+    const cartOptA = await addItemToCart(
+      {
+        productId: "prod-mural-1",
+        productType: "PER_AREA",
+        width: 10,
+        height: 8,
+        unit: "ft",
+        quantity: 1,
+        options: { finish: "matte" },
+        // Tampered client price fields (should be strictly ignored)
+        ...({ price: 10, unitPricePaise: 50, rate: 100 } as unknown as object),
+      },
+      optionsStore,
+      null
+    );
+    assert.strictEqual(cartOptA.items.length, 1);
+    // Rate is ₹200 (20000 paise). 88 sqft * 20000 = 1,760,000 paise. Tampered client price 50 was rejected!
+    assert.strictEqual(cartOptA.items[0].unitPricePaise, 1760000, "Server must ignore client-supplied prices");
+
+    const cartOptB = await addItemToCart(
+      {
+        productId: "prod-mural-1",
+        productType: "PER_AREA",
+        width: 10,
+        height: 8,
+        unit: "ft",
+        quantity: 1,
+        options: { finish: "gloss" },
+      },
+      optionsStore,
+      null
+    );
+    assert.strictEqual(cartOptB.items.length, 2, "Different options must produce separate line items");
+
+    // -------------------------------------------------------------
+    // Test 13: Customer Isolation (Customer B cannot access Customer A's cart)
+    // -------------------------------------------------------------
+    console.log("  13. Testing Customer-to-Customer Isolation & IDOR Guards...");
+    const customerA = { id: "user_customer_A" };
+    const customerB = { id: "user_customer_B" };
+    const storeA = createMockCookieStore();
+    const storeB = createMockCookieStore();
+
+    const cartCustA = await addItemToCart(
+      {
+        productId: "prod-print-1",
+        productType: "FIXED",
+        variantId: "var-a3",
+        quantity: 1,
+      },
+      storeA,
+      customerA
+    );
+    const itemCustA = cartCustA.items[0];
+
+    // Customer B tries to update Customer A's item
+    let custBUpdateBlocked = false;
+    try {
+      await updateCartItemQuantity(itemCustA.id, 10, storeB, customerB);
+    } catch (err) {
+      if (err instanceof UnauthorizedError || (err instanceof Error && err.name === "UnauthorizedError")) {
+        custBUpdateBlocked = true;
+      }
+    }
+    assert.strictEqual(custBUpdateBlocked, true, "Customer B cannot update Customer A's cart item");
+
+    // Customer B tries to delete Customer A's item
+    let custBDeleteBlocked = false;
+    try {
+      await removeCartItem(itemCustA.id, storeB, customerB);
+    } catch (err) {
+      if (err instanceof UnauthorizedError || (err instanceof Error && err.name === "UnauthorizedError")) {
+        custBDeleteBlocked = true;
+      }
+    }
+    assert.strictEqual(custBDeleteBlocked, true, "Customer B cannot remove Customer A's cart item");
+
+    // Guest intruder cannot remove another guest's item
+    const guestItemToRemove = cartOptB.items[0];
+    const guestIntruderStore = createMockCookieStore();
+    let guestIntruderDeleteBlocked = false;
+    try {
+      await removeCartItem(guestItemToRemove.id, guestIntruderStore, null);
+    } catch (err) {
+      if (err instanceof UnauthorizedError || (err instanceof Error && err.name === "UnauthorizedError")) {
+        guestIntruderDeleteBlocked = true;
+      }
+    }
+    assert.strictEqual(guestIntruderDeleteBlocked, true, "Guest intruder cannot remove another guest's item");
+
+    // -------------------------------------------------------------
+    // Test 14: Product & Variant Deactivation Handling
+    // -------------------------------------------------------------
+    console.log("  14. Testing Product & Variant Deactivation Detection...");
+    // Deactivate print product variant
+    const printProduct = dbProducts.find((p) => p.id === "prod-print-1")!;
+    const varA3 = printProduct.variants.find((v) => v.id === "var-a3") as unknown as { isActive?: boolean };
+    if (varA3) varA3.isActive = false;
+
+    const freshCustACart = await getCartWithFreshPricing(storeA, customerA);
+    assert.strictEqual(freshCustACart.hasUnavailableItems, true, "Cart must flag hasUnavailableItems when variant is inactive");
+    const inactiveLine = freshCustACart.items.find((i) => i.productId === "prod-print-1");
+    assert.strictEqual(inactiveLine?.isAvailable, false, "Line item must be marked unavailable");
+
+    // Restore variant
+    if (varA3) varA3.isActive = true;
+
+    // -------------------------------------------------------------
+    // Test 15: Read-only Empty Cart Performance Guard
+    // -------------------------------------------------------------
+    console.log("  15. Testing Read-only Empty Cart Performance Guard...");
+    const emptyFreshStore = createMockCookieStore();
+    const emptyCartResult = await getCartWithFreshPricing(emptyFreshStore, null);
+    assert.strictEqual(emptyCartResult.items.length, 0);
+    assert.strictEqual(emptyCartResult.totalItems, 0);
+    assert.strictEqual(emptyCartResult.subtotalPaise, 0);
+    assert.strictEqual(emptyFreshStore.get(GUEST_CART_COOKIE_NAME), undefined, "Must not set cookie on empty read");
+
+    const emptyCount = await getCartItemCount(emptyFreshStore, null);
+    assert.strictEqual(emptyCount, 0, "Empty count must return 0 without creating cart");
 
     console.log("  ✔ All Cart Database Service tests passed successfully!");
   } finally {
