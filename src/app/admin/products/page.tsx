@@ -1,7 +1,8 @@
 "use client";
 
 import * as React from "react";
-import { Plus } from "lucide-react";
+import Link from "next/link";
+import { Plus, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/feedback/confirm-dialog";
 import { toast } from "@/components/feedback/toast";
@@ -233,10 +234,19 @@ export default function ProductsPage() {
             Manage catalogue items, area-based rates, fixed pricing, category mappings, and storefront rules.
           </p>
         </div>
-        <Button onClick={handleOpenAddModal} className="shrink-0 gap-2">
-          <Plus className="h-4 w-4" />
-          Add Product
-        </Button>
+        <div className="flex items-center gap-2 shrink-0">
+          <Link
+            href="/admin/products/import"
+            className="inline-flex items-center justify-center rounded-lg border border-border bg-background px-2.5 py-1.5 text-sm font-medium hover:bg-muted hover:text-foreground gap-2"
+          >
+            <Upload className="h-4 w-4" />
+            Import CSV
+          </Link>
+          <Button onClick={handleOpenAddModal} className="gap-2">
+            <Plus className="h-4 w-4" />
+            Add Product
+          </Button>
+        </div>
       </div>
 
       <ProductsDataTable
