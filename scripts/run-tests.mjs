@@ -12,9 +12,9 @@ execSync(
   { stdio: "inherit" }
 );
 
-console.log("\n=== Stage 3: Product Detail, Canonical Pricing & Cart Tests ===");
+console.log("\n=== Stage 3: Product Detail, Canonical Pricing, Cart & Coupon Tests ===");
 execSync(
-  `tsx -e "require('module')._cache[require.resolve('server-only')] = { exports: {} }; (async () => { require('./src/lib/pricing/__tests__/pricing.test.ts').runPricingEngineTests(); await require('./src/lib/storefront/__tests__/product-detail.test.ts').runProductDetailStorefrontTests(); await require('./src/lib/cart/__tests__/cart.test.ts').runCartBoundaryTests(); await require('./src/lib/cart/__tests__/cart-db.test.ts').runCartDatabaseServiceTests(); })();"`,
+  `tsx -e "require('module')._cache[require.resolve('server-only')] = { exports: {} }; (async () => { require('./src/lib/pricing/__tests__/pricing.test.ts').runPricingEngineTests(); await require('./src/lib/storefront/__tests__/product-detail.test.ts').runProductDetailStorefrontTests(); await require('./src/lib/cart/__tests__/cart.test.ts').runCartBoundaryTests(); await require('./src/lib/cart/__tests__/cart-db.test.ts').runCartDatabaseServiceTests(); await require('./src/lib/coupons/__tests__/coupon.test.ts').runCouponEngineTests(); })();"`,
   { stdio: "inherit" }
 );
 

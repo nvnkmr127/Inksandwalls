@@ -4,7 +4,6 @@ import React, { useState, useEffect, useTransition } from "react";
 import Link from "next/link";
 import { 
   ShoppingCart, 
-  X, 
   Ruler,
   Trash2, 
   Plus, 
@@ -40,35 +39,43 @@ export function CartDrawer() {
   const [, startTransition] = useTransition();
   const cartCount = useCartCount();
 
-  const fetchCart = async () => {
-    setIsLoading(true);
+  const handleOpenChange = (open: boolean) => {
+    setIsOpen(open);
+    if (open) {
+      setIsLoading(true);
+      getCartAction()
+        .then((data) => {
+          setCart(data);
+        })
+        .catch((error) => {
+          console.error("Failed to load cart", error);
+        })
+        .finally(() => {
+          setIsLoading(false);
+        });
+    }
+  };
+
+  const refreshCart = React.useCallback(async () => {
     try {
       const data = await getCartAction();
       setCart(data);
     } catch (error) {
       console.error("Failed to load cart", error);
-    } finally {
-      setIsLoading(false);
     }
-  };
-
-  useEffect(() => {
-    if (isOpen) {
-      fetchCart();
-    }
-  }, [isOpen]);
+  }, []);
 
   useEffect(() => {
     const handleCartEvent = () => {
       if (isOpen) {
-        fetchCart();
+        refreshCart();
       }
     };
     window.addEventListener(CART_UPDATED_EVENT, handleCartEvent);
     return () => {
       window.removeEventListener(CART_UPDATED_EVENT, handleCartEvent);
     };
-  }, [isOpen]);
+  }, [isOpen, refreshCart]);
 
   const handleUpdateQuantity = (itemId: string, newQty: number) => {
     if (newQty < 1 || newQty > 99) return;
@@ -108,7 +115,7 @@ export function CartDrawer() {
   };
 
   return (
-    <Sheet open={isOpen} onOpenChange={setIsOpen}>
+    <Sheet open={isOpen} onOpenChange={handleOpenChange}>
       <SheetTrigger>
         <Button variant="ghost" size="icon" className="relative group">
           <ShoppingCart className="h-5 w-5 text-muted-foreground group-hover:text-foreground transition-colors" />
@@ -246,22 +253,37 @@ export function CartDrawer() {
         </div>
 
         {cart && cart.items.length > 0 && (
-          <div className="border-t bg-muted/20 p-6">
-            <div className="flex items-center justify-between font-semibold mb-4">
-              <span>Subtotal</span>
-              <span className="text-lg">{formatPaiseToRupees(cart.subtotalPaise)}</span>
+          <div className="border-t bg-muted/20 p-6 space-y-3">
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-muted-foreground">Subtotal</span>
+              <span className="font-medium">{formatPaiseToRupees(cart.subtotalPaise)}</span>
             </div>
-            <p className="text-xs text-muted-foreground mb-4">
-              Shipping, taxes, and discounts calculated at checkout.
+
+            {cart.discountPaise > 0 && (
+              <div className="flex items-center justify-between text-sm text-emerald-600 dark:text-emerald-400 font-medium">
+                <span>Coupon ({cart.coupon?.code})</span>
+                <span>- {formatPaiseToRupees(cart.discountPaise)}</span>
+              </div>
+            )}
+
+            <div className="flex items-center justify-between font-semibold text-base border-t border-border/50 pt-2">
+              <span>Total</span>
+              <span className="text-lg">{formatPaiseToRupees(cart.totalPaise ?? cart.subtotalPaise - (cart.discountPaise || 0))}</span>
+            </div>
+
+            <p className="text-xs text-muted-foreground">
+              Shipping & GST calculated at checkout.
             </p>
-            <div className="flex flex-col gap-3">
-              <Button className="w-full gap-2 shadow-sm" disabled={cart.hasUnavailableItems}>
+            <div className="flex flex-col gap-2 pt-1">
+              <Link href="/cart" onClick={() => setIsOpen(false)} passHref>
+                <Button variant="outline" className="w-full h-10 text-sm">
+                  View Full Cart & Coupons
+                </Button>
+              </Link>
+              <Button className="w-full gap-2 shadow-sm h-10" disabled={cart.hasUnavailableItems}>
                 Checkout
                 <ArrowRight className="h-4 w-4" />
               </Button>
-              <Button variant="outline" className="w-full h-11" onClick={() => setIsOpen(false)}>
-              Start Shopping
-            </Button>
             </div>
           </div>
         )}

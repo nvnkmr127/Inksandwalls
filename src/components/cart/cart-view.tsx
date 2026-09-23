@@ -13,6 +13,10 @@ import {
   AlertTriangle,
   Info,
   Edit2,
+  Tag,
+  Ticket,
+  Check,
+  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -34,9 +38,12 @@ import {
   updateCartConfigurationAction,
   removeCartItemAction,
   clearCartAction,
+  applyCouponAction,
+  removeCouponAction,
 } from "@/app/actions/cart";
 import { notifyCartUpdated } from "@/lib/cart/cart-events";
 import type { StorefrontCartView } from "@/lib/cart/cart-service";
+import type { DimensionUnit } from "@/lib/pricing/pricing-engine";
 
 interface CartViewProps {
   initialCart: StorefrontCartView;
@@ -48,7 +55,60 @@ export function CartView({ initialCart }: CartViewProps) {
   const [isClearing, setIsClearing] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [checkoutNotice, setCheckoutNotice] = useState<string | null>(null);
+  const [couponCodeInput, setCouponCodeInput] = useState("");
+  const [isApplyingCoupon, setIsApplyingCoupon] = useState(false);
+  const [isRemovingCoupon, setIsRemovingCoupon] = useState(false);
+  const [couponError, setCouponError] = useState<string | null>(null);
+  const [couponSuccess, setCouponSuccess] = useState<string | null>(null);
   const [, startTransition] = useTransition();
+
+  const handleApplyCoupon = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!couponCodeInput.trim()) return;
+
+    setIsApplyingCoupon(true);
+    setCouponError(null);
+    setCouponSuccess(null);
+
+    startTransition(async () => {
+      try {
+        const res = await applyCouponAction(couponCodeInput);
+        if (res.success && res.cart) {
+          setCart(res.cart);
+          setCouponSuccess(`Coupon "${couponCodeInput.trim().toUpperCase()}" applied successfully!`);
+          setCouponCodeInput("");
+        } else {
+          setCouponError(res.error || "Failed to apply coupon.");
+        }
+      } catch (err) {
+        setCouponError(err instanceof Error ? err.message : "An unexpected error occurred.");
+      } finally {
+        setIsApplyingCoupon(false);
+      }
+    });
+  };
+
+  const handleRemoveCoupon = () => {
+    setIsRemovingCoupon(true);
+    setCouponError(null);
+    setCouponSuccess(null);
+
+    startTransition(async () => {
+      try {
+        const res = await removeCouponAction();
+        if (res.success && res.cart) {
+          setCart(res.cart);
+          setCouponSuccess("Coupon removed.");
+        } else {
+          setCouponError(res.error || "Failed to remove coupon.");
+        }
+      } catch (err) {
+        setCouponError(err instanceof Error ? err.message : "An unexpected error occurred.");
+      } finally {
+        setIsRemovingCoupon(false);
+      }
+    });
+  };
 
   const handleUpdateQuantity = (itemId: string, newQty: number) => {
     if (newQty < 1 || newQty > 99) return;
@@ -195,6 +255,30 @@ export function CartView({ initialCart }: CartViewProps) {
             className="text-xs h-7 px-2"
           >
             Dismiss
+          </Button>
+        </div>
+      )}
+
+      {cart.couponWarning && (
+        <div className="flex items-center gap-3 p-4 rounded-xl border border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400 text-sm">
+          <AlertTriangle className="h-5 w-5 shrink-0" />
+          <p>{cart.couponWarning}</p>
+        </div>
+      )}
+
+      {couponSuccess && (
+        <div className="flex items-center justify-between gap-3 p-4 rounded-xl border border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 text-sm">
+          <div className="flex items-center gap-2">
+            <Check className="h-5 w-5 shrink-0" />
+            <p>{couponSuccess}</p>
+          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setCouponSuccess(null)}
+            className="text-xs h-7 px-2 hover:bg-emerald-500/20"
+          >
+            <X className="h-3.5 w-3.5" />
           </Button>
         </div>
       )}
@@ -409,51 +493,167 @@ export function CartView({ initialCart }: CartViewProps) {
         })}
       </div>
 
-      {/* Cart Summary Card */}
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-6 p-6 rounded-xl border border-border bg-muted/20">
-        <div>
-          <span className="text-sm text-muted-foreground font-medium">Order Subtotal:</span>
-          <p className="text-2xl font-bold text-foreground">
-            {formatPaiseToRupees(cart.subtotalPaise)}
-          </p>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            Taxes & shipping computed at checkout (Phase 07)
-          </p>
+      {/* Coupon Application & Order Summary */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
+        {/* Left Column: Coupon Engine Integration */}
+        <div className="p-6 rounded-xl border border-border bg-card shadow-sm space-y-4">
+          <div className="flex items-center gap-2 text-foreground font-semibold text-base">
+            <Ticket className="h-5 w-5 text-primary" />
+            <span>Have a Promotion or Coupon Code?</span>
+          </div>
+
+          {cart.coupon ? (
+            <div className="p-4 rounded-lg border border-primary/20 bg-primary/5 flex items-center justify-between">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <Badge variant="default" className="font-mono tracking-wider font-semibold">
+                    {cart.coupon.code}
+                  </Badge>
+                  <span className="text-xs font-medium text-emerald-600 dark:text-emerald-400">
+                    {cart.coupon.discountType === "PERCENTAGE"
+                      ? `${cart.coupon.discountValue}% OFF`
+                      : `₹${(cart.coupon.discountValue / 100).toLocaleString("en-IN")} FLAT OFF`}
+                  </span>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Discount of {formatPaiseToRupees(cart.coupon.discountPaise)} applied to your order.
+                </p>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleRemoveCoupon}
+                disabled={isRemovingCoupon}
+                className="text-xs text-muted-foreground hover:text-destructive h-8 px-2 gap-1"
+                aria-label="Remove applied coupon"
+              >
+                {isRemovingCoupon ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <>
+                    <X className="h-3.5 w-3.5" />
+                    <span>Remove</span>
+                  </>
+                )}
+              </Button>
+            </div>
+          ) : (
+            <form onSubmit={handleApplyCoupon} className="space-y-3">
+              <div className="flex items-center gap-2">
+                <div className="relative flex-1">
+                  <Tag className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    type="text"
+                    placeholder="Enter coupon code (e.g. FESTIVAL10)"
+                    value={couponCodeInput}
+                    onChange={(e) => setCouponCodeInput(e.target.value.toUpperCase())}
+                    className="pl-9 font-mono uppercase text-sm"
+                    disabled={isApplyingCoupon}
+                  />
+                </div>
+                <Button
+                  type="submit"
+                  disabled={isApplyingCoupon || !couponCodeInput.trim()}
+                  className="shrink-0"
+                >
+                  {isApplyingCoupon ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    "Apply"
+                  )}
+                </Button>
+              </div>
+              {couponError && (
+                <p className="text-xs font-medium text-destructive flex items-center gap-1.5">
+                  <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                  <span>{couponError}</span>
+                </p>
+              )}
+            </form>
+          )}
         </div>
 
-        <div className="flex flex-wrap items-center gap-3">
-          <Link href="/products" passHref>
-            <Button variant="outline">Continue Shopping</Button>
-          </Link>
-          <Button
-            disabled={cart.hasUnavailableItems}
-            onClick={() => {
-              if (!cart.hasUnavailableItems) {
-                setCheckoutNotice(
-                  "Checkout and payment gateway integration will be activated in Micro-Phase 07. All items, configurations, and dimensions in your cart are securely preserved."
-                );
-              }
-            }}
-            title={
-              cart.hasUnavailableItems
-                ? "Remove unavailable items to proceed"
-                : "Proceed to Checkout"
-            }
-            className="gap-2"
-          >
-            <span>Proceed to Checkout</span>
-            <ArrowRight className="h-4 w-4" />
-          </Button>
+        {/* Right Column: Order Summary & Checkout Card */}
+        <div className="p-6 rounded-xl border border-border bg-card shadow-sm space-y-4">
+          <h2 className="font-semibold text-base text-foreground">Order Summary</h2>
+
+          <div className="space-y-2 text-sm border-b border-border/60 pb-4">
+            <div className="flex justify-between items-center text-muted-foreground">
+              <span>Cart Subtotal</span>
+              <span className="font-medium text-foreground">
+                {formatPaiseToRupees(cart.subtotalPaise)}
+              </span>
+            </div>
+
+            {cart.discountPaise > 0 && (
+              <div className="flex justify-between items-center text-emerald-600 dark:text-emerald-400 font-medium">
+                <span className="flex items-center gap-1.5">
+                  <Tag className="h-3.5 w-3.5" />
+                  <span>Coupon Discount</span>
+                </span>
+                <span>- {formatPaiseToRupees(cart.discountPaise)}</span>
+              </div>
+            )}
+
+            <div className="flex justify-between items-center text-muted-foreground text-xs">
+              <span>Estimated GST & Delivery</span>
+              <span>Calculated at checkout</span>
+            </div>
+          </div>
+
+          <div className="flex justify-between items-baseline pt-1">
+            <div>
+              <span className="text-base font-bold text-foreground">Total:</span>
+              <p className="text-[11px] text-muted-foreground">
+                Inclusive of applied promotion discounts
+              </p>
+            </div>
+            <div className="text-right">
+              <span className="text-2xl font-bold tracking-tight text-foreground">
+                {formatPaiseToRupees(cart.totalPaise ?? cart.subtotalPaise - (cart.discountPaise || 0))}
+              </span>
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-2 pt-2">
+            <Button
+              disabled={cart.hasUnavailableItems}
+              onClick={() => {
+                if (!cart.hasUnavailableItems) {
+                  setCheckoutNotice(
+                    "Checkout and payment gateway integration will be activated in Micro-Phase 07. All items, configurations, dimensions, and applied coupon discounts are securely preserved."
+                  );
+                }
+              }}
+              className="w-full gap-2 shadow-sm h-11 text-base font-medium"
+            >
+              <span>Proceed to Checkout</span>
+              <ArrowRight className="h-4 w-4" />
+            </Button>
+            <Link href="/products" passHref className="w-full">
+              <Button variant="outline" className="w-full">
+                Continue Shopping
+              </Button>
+            </Link>
+          </div>
         </div>
       </div>
     </div>
   );
 }
 
-function CartItemEditDialog({ item, isBusy, setCart, setErrorMessage, setUpdatingItemId }: any) {
-  const [editWidth, setEditWidth] = useState(String(item.dimensions.width));
-  const [editHeight, setEditHeight] = useState(String(item.dimensions.height));
-  const [editUnit, setEditUnit] = useState(item.dimensions.unit);
+interface CartItemEditDialogProps {
+  item: StorefrontCartView["items"][number];
+  isBusy: boolean;
+  setCart: React.Dispatch<React.SetStateAction<StorefrontCartView>>;
+  setErrorMessage: React.Dispatch<React.SetStateAction<string | null>>;
+  setUpdatingItemId: React.Dispatch<React.SetStateAction<string | null>>;
+}
+
+function CartItemEditDialog({ item, isBusy, setCart, setErrorMessage, setUpdatingItemId }: CartItemEditDialogProps) {
+  const [editWidth, setEditWidth] = useState(String(item.dimensions?.width || ""));
+  const [editHeight, setEditHeight] = useState(String(item.dimensions?.height || ""));
+  const [editUnit, setEditUnit] = useState<DimensionUnit>((item.dimensions?.unit as DimensionUnit) || "ft");
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [, startTransition] = useTransition();
 
@@ -469,7 +669,7 @@ function CartItemEditDialog({ item, isBusy, setCart, setErrorMessage, setUpdatin
         const res = await updateCartConfigurationAction(item.id, {
           width: Number(editWidth),
           height: Number(editHeight),
-          unit: editUnit as any,
+          unit: editUnit,
         });
         if (res.success && res.cart) {
           setCart(res.cart);
@@ -513,7 +713,7 @@ function CartItemEditDialog({ item, isBusy, setCart, setErrorMessage, setUpdatin
             <Label>Unit</Label>
             <Select
               value={editUnit}
-              onChange={(e) => setEditUnit(e.target.value)}
+              onChange={(e) => setEditUnit(e.target.value as DimensionUnit)}
               options={[
                 { value: "ft", label: "Feet (ft)" },
                 { value: "inch", label: "Inches (in)" },

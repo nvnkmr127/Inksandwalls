@@ -6,6 +6,8 @@ import {
   updateCartItemConfiguration,
   removeCartItem,
   clearCart,
+  applyCouponToCart,
+  removeCouponFromCart,
   getCartWithFreshPricing,
   getCartItemCount,
   type AddToCartInput,
@@ -122,6 +124,44 @@ export async function clearCartAction(): Promise<CartActionResult> {
   }
 }
 
+export async function applyCouponAction(code: string): Promise<CartActionResult> {
+  try {
+    const cart = await applyCouponToCart(code);
+    return {
+      success: true,
+      cart,
+      totalItems: cart.totalItems,
+    };
+  } catch (error) {
+    if (error instanceof ValidationError || error instanceof UnauthorizedError) {
+      return { success: false, error: error.message };
+    }
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Failed to apply coupon.",
+    };
+  }
+}
+
+export async function removeCouponAction(): Promise<CartActionResult> {
+  try {
+    const cart = await removeCouponFromCart();
+    return {
+      success: true,
+      cart,
+      totalItems: cart.totalItems,
+    };
+  } catch (error) {
+    if (error instanceof ValidationError || error instanceof UnauthorizedError) {
+      return { success: false, error: error.message };
+    }
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Failed to remove coupon.",
+    };
+  }
+}
+
 export async function getCartAction(): Promise<StorefrontCartView> {
   return await getCartWithFreshPricing();
 }
@@ -129,3 +169,4 @@ export async function getCartAction(): Promise<StorefrontCartView> {
 export async function getCartItemCountAction(): Promise<number> {
   return await getCartItemCount();
 }
+

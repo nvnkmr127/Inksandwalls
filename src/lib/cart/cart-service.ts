@@ -12,6 +12,12 @@ import {
 import { getCurrentUser, type CurrentUser } from "@/lib/auth/session";
 import { ValidationError, UnauthorizedError } from "@/lib/errors";
 import { logger } from "@/lib/logger";
+import {
+  validateCouponCodeFormat,
+  validateCouponEligibility,
+  calculateCouponDiscount,
+  type CouponData,
+} from "@/lib/coupons/coupon-engine";
 
 export const GUEST_CART_COOKIE_NAME = "inks_cart_session_id";
 
@@ -72,11 +78,25 @@ export interface CartItemView {
   addedAt: string;
 }
 
+export interface AppliedCouponView {
+  id: string;
+  code: string;
+  discountType: "PERCENTAGE" | "FIXED_AMOUNT";
+  discountValue: number;
+  discountPaise: number;
+  minCartValuePaise: number | null;
+  maxDiscountPaise: number | null;
+}
+
 export interface StorefrontCartView {
   cartId: string;
   items: CartItemView[];
   totalItems: number;
   subtotalPaise: number;
+  discountPaise: number;
+  totalPaise: number;
+  coupon: AppliedCouponView | null;
+  couponWarning?: string | null;
   hasUnavailableItems: boolean;
   isGuest: boolean;
 }
@@ -201,7 +221,7 @@ export async function getOrCreateActiveCart(
         customerId: owner.customerId,
         status: CartStatus.ACTIVE,
       },
-      select: { id: true },
+      select: { id: true, couponId: true },
     });
 
     if (!cart) {
@@ -210,7 +230,7 @@ export async function getOrCreateActiveCart(
           customerId: owner.customerId,
           status: CartStatus.ACTIVE,
         },
-        select: { id: true },
+        select: { id: true, couponId: true },
       });
     }
 
@@ -223,7 +243,7 @@ export async function getOrCreateActiveCart(
       sessionId: owner.sessionId,
       status: CartStatus.ACTIVE,
     },
-    select: { id: true },
+    select: { id: true, couponId: true },
   });
 
   if (!cart) {
@@ -232,7 +252,7 @@ export async function getOrCreateActiveCart(
         sessionId: owner.sessionId,
         status: CartStatus.ACTIVE,
       },
-      select: { id: true },
+      select: { id: true, couponId: true },
     });
   }
 
@@ -827,6 +847,10 @@ export async function getCartWithFreshPricing(
       items: [],
       totalItems: 0,
       subtotalPaise: 0,
+      discountPaise: 0,
+      totalPaise: 0,
+      coupon: null,
+      couponWarning: null,
       hasUnavailableItems: false,
       isGuest: true,
     };
@@ -996,11 +1020,98 @@ export async function getCartWithFreshPricing(
   const totalItems = items.reduce((acc, item) => acc + item.quantity, 0);
   const subtotalPaise = items.reduce((acc, item) => acc + item.totalPricePaise, 0);
 
+  // Authoritative Coupon Revalidation & Discount Calculation
+  let appliedCouponView: AppliedCouponView | null = null;
+  let discountPaise = 0;
+  let couponWarning: string | null = null;
+
+  if (cart.couponId) {
+    const couponRecord = await prisma.coupon.findUnique({
+      where: { id: cart.couponId },
+    });
+
+    if (!couponRecord) {
+      // Coupon was deleted from database
+      await prisma.cart.update({
+        where: { id: cart.id },
+        data: { couponId: null },
+      });
+      couponWarning = "The applied coupon is no longer valid and has been removed.";
+    } else {
+      // Re-evaluate eligibility against fresh subtotal and customer usage
+      let customerPreviousUsageCount = 0;
+      const owner = await resolveCartOwner(cookieStore, currentUser);
+      if (owner.type === "CUSTOMER" && owner.customerId) {
+        customerPreviousUsageCount = await prisma.couponUsage.count({
+          where: {
+            couponId: couponRecord.id,
+            customerId: owner.customerId,
+          },
+        });
+      }
+
+      const couponData: CouponData = {
+        id: couponRecord.id,
+        code: couponRecord.code,
+        discountType: couponRecord.discountType,
+        discountValue: couponRecord.discountValue,
+        minCartValuePaise: couponRecord.minCartValuePaise,
+        maxDiscountPaise: couponRecord.maxDiscountPaise,
+        startDate: couponRecord.startDate,
+        expiryDate: couponRecord.expiryDate,
+        usageLimit: couponRecord.usageLimit,
+        perCustomerLimit: couponRecord.perCustomerLimit,
+        currentUsageCount: couponRecord.currentUsageCount,
+        isActive: couponRecord.isActive,
+      };
+
+      const eligibility = validateCouponEligibility(couponData, {
+        subtotalPaise,
+        customerPreviousUsageCount,
+      });
+
+      if (!eligibility.valid) {
+        // Disqualify and decouple coupon
+        await prisma.cart.update({
+          where: { id: cart.id },
+          data: { couponId: null },
+        });
+        couponWarning = eligibility.error || "The coupon is no longer applicable to your cart and has been removed.";
+      } else {
+        const discountCalc = calculateCouponDiscount(couponData, subtotalPaise);
+        if (discountCalc.eligible) {
+          discountPaise = discountCalc.discountPaise;
+          appliedCouponView = {
+            id: couponRecord.id,
+            code: couponRecord.code,
+            discountType: couponRecord.discountType as "PERCENTAGE" | "FIXED_AMOUNT",
+            discountValue: couponRecord.discountValue,
+            discountPaise,
+            minCartValuePaise: couponRecord.minCartValuePaise,
+            maxDiscountPaise: couponRecord.maxDiscountPaise,
+          };
+        } else {
+          await prisma.cart.update({
+            where: { id: cart.id },
+            data: { couponId: null },
+          });
+          couponWarning = discountCalc.error || "Coupon could not be applied.";
+        }
+      }
+    }
+  }
+
+  const totalPaise = Math.max(0, subtotalPaise - discountPaise);
+
   return {
     cartId: cart.id,
     items,
     totalItems,
     subtotalPaise,
+    discountPaise,
+    totalPaise,
+    coupon: appliedCouponView,
+    couponWarning,
     hasUnavailableItems,
     isGuest,
   };
@@ -1032,3 +1143,134 @@ export async function getCartItemCount(
     return 0;
   }
 }
+
+/**
+ * Apply coupon to the active cart.
+ * Server-authoritative:
+ * 1. Resolves current cart and owner.
+ * 2. Normalizes code.
+ * 3. Finds coupon in database.
+ * 4. Validates eligibility against authoritative fresh subtotal and customer usage.
+ * 5. Atomically binds coupon to cart.
+ * 6. Returns fresh cart view with discount and new total.
+ */
+export async function applyCouponToCart(
+  code: string,
+  customStore?: CookieStoreLike,
+  customUser?: CurrentUser | null
+): Promise<StorefrontCartView> {
+  const normalizedCode = validateCouponCodeFormat(code);
+
+  const cookieStore = customStore || (await cookies());
+  const currentUser = customUser !== undefined ? customUser : await getCurrentUser();
+  const owner = await resolveCartOwner(cookieStore, currentUser);
+
+  const { cart } = await getOrCreateActiveCart(cookieStore, currentUser);
+
+  // Authoritatively compute current active cart subtotal
+  const items = await prisma.cartItem.findMany({
+    where: { cartId: cart.id },
+    select: { totalPricePaise: true },
+  });
+
+  const subtotalPaise = items.reduce((sum, item) => sum + item.totalPricePaise, 0);
+
+  if (items.length === 0 || subtotalPaise <= 0) {
+    throw new ValidationError("Cannot apply coupon to an empty cart.");
+  }
+
+  // Find coupon
+  const coupon = await prisma.coupon.findUnique({
+    where: { code: normalizedCode },
+  });
+
+  if (!coupon) {
+    throw new ValidationError("Invalid coupon code.");
+  }
+
+  // Count prior usage if authenticated customer
+  let customerPreviousUsageCount = 0;
+  if (owner.type === "CUSTOMER" && owner.customerId) {
+    customerPreviousUsageCount = await prisma.couponUsage.count({
+      where: {
+        couponId: coupon.id,
+        customerId: owner.customerId,
+      },
+    });
+  }
+
+  const couponData: CouponData = {
+    id: coupon.id,
+    code: coupon.code,
+    discountType: coupon.discountType,
+    discountValue: coupon.discountValue,
+    minCartValuePaise: coupon.minCartValuePaise,
+    maxDiscountPaise: coupon.maxDiscountPaise,
+    startDate: coupon.startDate,
+    expiryDate: coupon.expiryDate,
+    usageLimit: coupon.usageLimit,
+    perCustomerLimit: coupon.perCustomerLimit,
+    currentUsageCount: coupon.currentUsageCount,
+    isActive: coupon.isActive,
+  };
+
+  const validation = validateCouponEligibility(couponData, {
+    subtotalPaise,
+    customerPreviousUsageCount,
+  });
+
+  if (!validation.valid) {
+    throw new ValidationError(validation.error || "Coupon is not applicable to this order.");
+  }
+
+  // Concurrency-safe atomic attachment:
+  // If coupon has a global usageLimit, ensure currentUsageCount is still < usageLimit
+  await prisma.$transaction(async (tx) => {
+    if (coupon.usageLimit != null) {
+      const freshCoupon = await tx.coupon.findUnique({
+        where: { id: coupon.id },
+        select: { currentUsageCount: true, usageLimit: true, isActive: true },
+      });
+      if (!freshCoupon || !freshCoupon.isActive || (freshCoupon.usageLimit != null && freshCoupon.currentUsageCount >= freshCoupon.usageLimit)) {
+        throw new ValidationError("This coupon has reached its maximum usage limit.");
+      }
+    }
+
+    await tx.cart.update({
+      where: { id: cart.id },
+      data: { couponId: coupon.id },
+    });
+  });
+
+  logger.info("Coupon applied to cart", {
+    cartId: cart.id,
+    couponCode: coupon.code,
+    subtotalPaise,
+  });
+
+  return await getCartWithFreshPricing(cookieStore, currentUser);
+}
+
+/**
+ * Remove applied coupon from the active cart.
+ * Recalculates subtotal and resets discount to 0.
+ */
+export async function removeCouponFromCart(
+  customStore?: CookieStoreLike,
+  customUser?: CurrentUser | null
+): Promise<StorefrontCartView> {
+  const cookieStore = customStore || (await cookies());
+  const currentUser = customUser !== undefined ? customUser : await getCurrentUser();
+
+  const { cart } = await getOrCreateActiveCart(cookieStore, currentUser);
+
+  if (cart.couponId) {
+    await prisma.cart.update({
+      where: { id: cart.id },
+      data: { couponId: null },
+    });
+  }
+
+  return await getCartWithFreshPricing(cookieStore, currentUser);
+}
+

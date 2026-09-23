@@ -3,12 +3,11 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Menu, Search, ShoppingBag, X } from "lucide-react";
+import { Menu, Search, X } from "lucide-react";
 import { siteConfig } from "@/config/site";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { AuthStatus } from "@/components/auth/AuthStatus";
-import { useCartCount } from "@/lib/cart/cart-events";
 import {
   Sheet,
   SheetContent,
@@ -27,7 +26,6 @@ export function Header({ categories = [], collections = [] }: HeaderProps) {
   const [isOpen, setIsOpen] = React.useState(false);
   const [isSearchOpen, setIsSearchOpen] = React.useState(false);
   const [searchQuery, setSearchQuery] = React.useState("");
-  const cartCount = useCartCount();
   const router = useRouter();
 
   const handleSearchSubmit = (e: React.FormEvent) => {

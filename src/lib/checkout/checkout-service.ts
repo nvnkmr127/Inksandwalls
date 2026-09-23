@@ -1,12 +1,11 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
-import { CheckoutStatus, CartStatus } from "@prisma/client";
+import { CheckoutStatus } from "@prisma/client";
 import { getCartWithFreshPricing, resolveCartOwner, CookieStoreLike } from "@/lib/cart/cart-service";
 import { getCurrentUser, type CurrentUser } from "@/lib/auth/session";
 import { ValidationError, UnauthorizedError } from "@/lib/errors";
 import { cookies } from "next/headers";
 import {
-  AddressInput,
   CheckoutContactInput,
   UpdateCheckoutAddressInput,
   SelectDeliveryOptionInput,

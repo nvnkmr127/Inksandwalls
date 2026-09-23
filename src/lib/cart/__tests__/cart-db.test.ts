@@ -121,6 +121,7 @@ export async function runCartDatabaseServiceTests() {
     id: string;
     customerId: string | null;
     sessionId: string | null;
+    couponId?: string | null;
     status: CartStatus;
     createdAt: Date;
     updatedAt: Date;
@@ -237,7 +238,9 @@ export async function runCartDatabaseServiceTests() {
     return newCust;
   };
 
-  (prisma.$transaction as unknown) = async (cb: any) => {
+  (prisma.$transaction as unknown) = async (
+    cb: Promise<unknown>[] | ((tx: typeof prisma) => Promise<unknown>)
+  ) => {
     if (Array.isArray(cb)) {
       const results = [];
       for (const op of cb) {
@@ -273,6 +276,7 @@ export async function runCartDatabaseServiceTests() {
       id: `cart_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
       customerId: args.data.customerId ?? null,
       sessionId: args.data.sessionId ?? null,
+      couponId: null,
       status: args.data.status,
       createdAt: new Date(),
       updatedAt: new Date(),

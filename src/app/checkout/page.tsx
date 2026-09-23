@@ -1,7 +1,7 @@
 import { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { startCheckout } from "@/lib/checkout/checkout-service";
-import { ValidationError, UnauthorizedError } from "@/lib/errors";
+import { ValidationError } from "@/lib/errors";
 
 export const metadata: Metadata = {
   title: "Checkout - INKs & Walls",
