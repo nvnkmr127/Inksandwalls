@@ -8,6 +8,8 @@ export type Permission =
   | "orders.update"
   | "customers.read"
   | "customers.update"
+  | "coupons.read"
+  | "coupons.write"
   | "settings.write"
   | "system.manage";
 
@@ -21,6 +23,8 @@ const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     "orders.update",
     "customers.read",
     "customers.update",
+    "coupons.read",
+    "coupons.write",
   ],
   [Role.SUPER_ADMIN]: [
     "catalog.read",
@@ -29,6 +33,8 @@ const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     "orders.update",
     "customers.read",
     "customers.update",
+    "coupons.read",
+    "coupons.write",
     "settings.write",
     "system.manage",
   ],

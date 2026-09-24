@@ -1,31 +1,98 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
 import { CheckoutStatus } from "@prisma/client";
-import { getCartWithFreshPricing, resolveCartOwner, CookieStoreLike } from "@/lib/cart/cart-service";
+import {
+  getCartWithFreshPricing,
+  resolveCartOwner,
+  CookieStoreLike,
+} from "@/lib/cart/cart-service";
 import { getCurrentUser, type CurrentUser } from "@/lib/auth/session";
-import { ValidationError, UnauthorizedError } from "@/lib/errors";
+import { ValidationError, UnauthorizedError, NotFoundError } from "@/lib/errors";
 import { cookies } from "next/headers";
 import {
-  CheckoutContactInput,
-  UpdateCheckoutAddressInput,
-  SelectDeliveryOptionInput,
-} from "./checkout-schema";
+  validateAddressInput,
+  type AddressInput,
+} from "@/lib/address/address-schema";
+import {
+  calculateCheckoutTotals,
+  type CheckoutTotalsResult,
+} from "./totals-engine";
+import { getActiveShippingRules } from "@/lib/shipping/shipping-service";
+import type { CouponData } from "@/lib/coupons/coupon-engine";
 
+export interface CheckoutSessionSnapshot {
+  id: string;
+  cartId: string;
+  status: CheckoutStatus;
+  email: string;
+  phone: string | null;
+  shippingAddressId: string | null;
+  billingAddressId: string | null;
+  shippingAddress: {
+    id: string;
+    firstName: string;
+    lastName: string;
+    addressLine1: string;
+    addressLine2: string | null;
+    city: string;
+    state: string;
+    postalCode: string;
+    country: string;
+    phone: string | null;
+  } | null;
+  billingAddress: {
+    id: string;
+    firstName: string;
+    lastName: string;
+    addressLine1: string;
+    addressLine2: string | null;
+    city: string;
+    state: string;
+    postalCode: string;
+    country: string;
+    phone: string | null;
+  } | null;
+  cart: {
+    id: string;
+    items: Array<{
+      id: string;
+      productId: string;
+      productName: string;
+      productType: "PER_AREA" | "FIXED";
+      unitPricePaise: number;
+      quantity: number;
+      totalPricePaise: number;
+      variantName: string | null;
+      width: number | null;
+      height: number | null;
+      unit: string | null;
+    }>;
+    coupon: CouponData | null;
+  };
+  totals: CheckoutTotalsResult;
+  expiresAt: Date;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+/**
+ * Initiates or retrieves an existing active checkout session for the user's cart.
+ */
 export async function startCheckout(
   customStore?: CookieStoreLike,
   customUser?: CurrentUser | null
-) {
+): Promise<CheckoutSessionSnapshot> {
   const cookieStore = customStore || (await cookies());
   const currentUser = customUser !== undefined ? customUser : await getCurrentUser();
   const owner = await resolveCartOwner(cookieStore, currentUser);
-  
-  // Get cart and recalculate authoritative pricing
+
+  // Authoritative fresh cart pricing
   const cartView = await getCartWithFreshPricing(cookieStore, currentUser);
-  
+
   if (!cartView || cartView.items.length === 0) {
     throw new ValidationError("Your cart is empty.");
   }
-  
+
   if (cartView.hasUnavailableItems) {
     throw new ValidationError("Some items in your cart are currently unavailable.");
   }
@@ -36,13 +103,16 @@ export async function startCheckout(
       cartId: cartView.cartId,
       status: CheckoutStatus.ACTIVE,
     },
+    include: {
+      shippingAddress: true,
+      billingAddress: true,
+    },
   });
 
   const expiresAt = new Date();
   expiresAt.setHours(expiresAt.getHours() + 1); // 1 hour expiration
 
   if (!checkoutSession) {
-    // Create new checkout session
     checkoutSession = await prisma.checkoutSession.create({
       data: {
         cartId: cartView.cartId,
@@ -52,34 +122,46 @@ export async function startCheckout(
         email: currentUser?.email || "",
         phone: currentUser?.phone || null,
         subtotalPaise: cartView.subtotalPaise,
-        taxAmountPaise: 0, // Implement tax logic if needed
-        totalAmountPaise: cartView.subtotalPaise,
+        taxAmountPaise: 0,
+        totalAmountPaise: cartView.totalPaise,
         expiresAt,
       },
+      include: {
+        shippingAddress: true,
+        billingAddress: true,
+      },
     });
-  } else {
-    // Update pricing snapshot if it changed
-    if (checkoutSession.subtotalPaise !== cartView.subtotalPaise) {
-      checkoutSession = await prisma.checkoutSession.update({
-        where: { id: checkoutSession.id },
-        data: {
-          subtotalPaise: cartView.subtotalPaise,
-          totalAmountPaise: cartView.subtotalPaise + (checkoutSession.deliveryAmountPaise || 0),
-          expiresAt, // Reset expiration
-        },
-      });
-    }
   }
 
-  return checkoutSession;
+  return recalculateCheckoutSession(checkoutSession.id, cookieStore, currentUser);
 }
 
-export async function getCheckoutSession(checkoutId: string, customStore?: CookieStoreLike, customUser?: CurrentUser | null) {
+/**
+ * Retrieves and recalculates checkout session with full authoritative pricing and shipping.
+ */
+export async function getCheckoutSession(
+  checkoutId: string,
+  customStore?: CookieStoreLike,
+  customUser?: CurrentUser | null
+): Promise<CheckoutSessionSnapshot> {
+  return recalculateCheckoutSession(checkoutId, customStore, customUser);
+}
+
+/**
+ * Single authoritative checkout recalculation function.
+ * Verifies cart lines, re-checks coupon eligibility, re-evaluates shipping rules,
+ * and updates checkout database snapshots.
+ */
+export async function recalculateCheckoutSession(
+  checkoutId: string,
+  customStore?: CookieStoreLike,
+  customUser?: CurrentUser | null
+): Promise<CheckoutSessionSnapshot> {
   const cookieStore = customStore || (await cookies());
   const currentUser = customUser !== undefined ? customUser : await getCurrentUser();
   const owner = await resolveCartOwner(cookieStore, currentUser);
 
-  const checkoutSession = await prisma.checkoutSession.findUnique({
+  const session = await prisma.checkoutSession.findUnique({
     where: { id: checkoutId },
     include: {
       shippingAddress: true,
@@ -87,116 +169,258 @@ export async function getCheckoutSession(checkoutId: string, customStore?: Cooki
       cart: {
         include: {
           items: true,
+          coupon: true,
         },
       },
     },
   });
 
-  if (!checkoutSession) {
-    throw new ValidationError("Checkout session not found.");
+  if (!session) {
+    throw new NotFoundError("Checkout session not found.");
   }
 
   // Verify ownership
-  if (owner.type === "CUSTOMER" && checkoutSession.customerId !== owner.customerId) {
-    throw new UnauthorizedError("Unauthorized access to checkout session.");
-  }
-  
-  if (owner.type === "GUEST" && checkoutSession.sessionId !== owner.sessionId) {
+  if (owner.type === "CUSTOMER" && session.customerId !== owner.customerId) {
     throw new UnauthorizedError("Unauthorized access to checkout session.");
   }
 
-  if (checkoutSession.status === CheckoutStatus.EXPIRED || new Date() > checkoutSession.expiresAt) {
-    if (checkoutSession.status !== CheckoutStatus.EXPIRED) {
+  if (owner.type === "GUEST" && session.sessionId !== owner.sessionId) {
+    throw new UnauthorizedError("Unauthorized access to checkout session.");
+  }
+
+  // Handle session expiration
+  if (session.status === CheckoutStatus.EXPIRED || new Date() > session.expiresAt) {
+    if (session.status !== CheckoutStatus.EXPIRED) {
       await prisma.checkoutSession.update({
-        where: { id: checkoutSession.id },
+        where: { id: session.id },
         data: { status: CheckoutStatus.EXPIRED },
       });
     }
     throw new ValidationError("This checkout session has expired. Please restart checkout.");
   }
 
-  return checkoutSession;
-}
+  // Fresh authoritative cart pricing
+  const freshCart = await getCartWithFreshPricing(cookieStore, currentUser);
+  const activeShippingRules = await getActiveShippingRules();
 
-export async function updateCheckoutContact(
-  checkoutId: string,
-  input: CheckoutContactInput,
-  customStore?: CookieStoreLike,
-  customUser?: CurrentUser | null
-) {
-  const session = await getCheckoutSession(checkoutId, customStore, customUser);
+  // Load coupon from fresh cart
+  const couponData: CouponData | null = session.cart.coupon
+    ? {
+        id: session.cart.coupon.id,
+        code: session.cart.coupon.code,
+        discountType: session.cart.coupon.discountType,
+        discountValue: session.cart.coupon.discountValue,
+        minCartValuePaise: session.cart.coupon.minCartValuePaise,
+        maxDiscountPaise: session.cart.coupon.maxDiscountPaise,
+        startDate: session.cart.coupon.startDate,
+        expiryDate: session.cart.coupon.expiryDate,
+        usageLimit: session.cart.coupon.usageLimit,
+        perCustomerLimit: session.cart.coupon.perCustomerLimit,
+        currentUsageCount: session.cart.coupon.currentUsageCount,
+        isActive: session.cart.coupon.isActive,
+      }
+    : null;
 
-  return await prisma.checkoutSession.update({
+  // Calculate authoritative totals
+  const totals = calculateCheckoutTotals({
+    items: freshCart.items.map((item) => ({
+      id: item.id,
+      productId: item.productId,
+      productName: item.productName,
+      productType: item.productType,
+      unitPricePaise: item.unitPricePaise,
+      quantity: item.quantity,
+      totalPricePaise: item.totalPricePaise,
+      isAvailable: item.isAvailable,
+    })),
+    coupon: couponData,
+    shippingAddress: session.shippingAddress
+      ? {
+          postalCode: session.shippingAddress.postalCode,
+          state: session.shippingAddress.state,
+          city: session.shippingAddress.city,
+          country: session.shippingAddress.country,
+        }
+      : null,
+    shippingRules: activeShippingRules,
+  });
+
+  // Update snapshot in database if changed
+  await prisma.checkoutSession.update({
     where: { id: session.id },
     data: {
-      email: input.email,
-      phone: input.phone || null,
+      subtotalPaise: totals.subtotalPaise,
+      deliveryAmountPaise: totals.shippingPaise,
+      deliveryOption: totals.appliedShippingRule ? totals.appliedShippingRule.name : null,
+      taxAmountPaise: totals.taxAmountPaise,
+      totalAmountPaise: totals.totalPayablePaise,
     },
   });
+
+  return {
+    id: session.id,
+    cartId: session.cartId,
+    status: session.status,
+    email: session.email,
+    phone: session.phone,
+    shippingAddressId: session.shippingAddressId,
+    billingAddressId: session.billingAddressId,
+    shippingAddress: session.shippingAddress,
+    billingAddress: session.billingAddress,
+    cart: {
+      id: session.cart.id,
+      items: session.cart.items.map((item) => ({
+        id: item.id,
+        productId: item.productId,
+        productName: item.productName,
+        productType: item.productType,
+        unitPricePaise: item.unitPricePaise,
+        quantity: item.quantity,
+        totalPricePaise: item.totalPricePaise,
+        variantName: item.variantName,
+        width: item.width,
+        height: item.height,
+        unit: item.unit,
+      })),
+      coupon: couponData,
+    },
+    totals,
+    expiresAt: session.expiresAt,
+    createdAt: session.createdAt,
+    updatedAt: session.updatedAt,
+  };
 }
 
-export async function updateCheckoutAddress(
+/**
+ * Updates checkout contact info (email / phone).
+ */
+export async function updateCheckoutContact(
   checkoutId: string,
-  input: UpdateCheckoutAddressInput,
+  input: { email: string; phone?: string | null },
   customStore?: CookieStoreLike,
   customUser?: CurrentUser | null
-) {
-  const session = await getCheckoutSession(checkoutId, customStore, customUser);
-  const owner = await resolveCartOwner(customStore, customUser);
+): Promise<CheckoutSessionSnapshot> {
+  const cookieStore = customStore || (await cookies());
+  const currentUser = customUser !== undefined ? customUser : await getCurrentUser();
+
+  if (!input.email || !input.email.includes("@")) {
+    throw new ValidationError("A valid email address is required.");
+  }
+
+  await prisma.checkoutSession.update({
+    where: { id: checkoutId },
+    data: {
+      email: input.email.trim(),
+      phone: input.phone ? input.phone.trim() : null,
+    },
+  });
+
+  return recalculateCheckoutSession(checkoutId, cookieStore, currentUser);
+}
+
+/**
+ * Selects an existing saved address for checkout shipping and/or billing.
+ */
+export async function selectCheckoutSavedAddress(
+  checkoutId: string,
+  addressId: string,
+  type: "shipping" | "billing" | "both",
+  customStore?: CookieStoreLike,
+  customUser?: CurrentUser | null
+): Promise<CheckoutSessionSnapshot> {
+  const cookieStore = customStore || (await cookies());
+  const currentUser = customUser !== undefined ? customUser : await getCurrentUser();
+  const owner = await resolveCartOwner(cookieStore, currentUser);
+
+  const address = await prisma.address.findUnique({
+    where: { id: addressId },
+  });
+
+  if (!address) {
+    throw new NotFoundError("Selected address not found.");
+  }
+
+  if (owner.type === "CUSTOMER" && address.customerId && address.customerId !== owner.customerId) {
+    throw new UnauthorizedError("Unauthorized access to this address.");
+  }
+
+  const updateData: { shippingAddressId?: string; billingAddressId?: string } = {};
+  if (type === "shipping" || type === "both") {
+    updateData.shippingAddressId = address.id;
+  }
+  if (type === "billing" || type === "both") {
+    updateData.billingAddressId = address.id;
+  }
+
+  await prisma.checkoutSession.update({
+    where: { id: checkoutId },
+    data: updateData,
+  });
+
+  return recalculateCheckoutSession(checkoutId, cookieStore, currentUser);
+}
+
+/**
+ * Sets a new address for checkout.
+ */
+export async function setCheckoutAddress(
+  checkoutId: string,
+  input: {
+    shippingAddress: Partial<AddressInput>;
+    billingAddress?: Partial<AddressInput> | null;
+    useShippingAsBilling?: boolean;
+  },
+  customStore?: CookieStoreLike,
+  customUser?: CurrentUser | null
+): Promise<CheckoutSessionSnapshot> {
+  const cookieStore = customStore || (await cookies());
+  const currentUser = customUser !== undefined ? customUser : await getCurrentUser();
+  const owner = await resolveCartOwner(cookieStore, currentUser);
 
   const customerId = owner.type === "CUSTOMER" ? owner.customerId : null;
 
-  // Create or update shipping address
-  const shippingAddress = await prisma.address.create({
+  // Validate shipping address
+  const validatedShipping = validateAddressInput(input.shippingAddress);
+
+  const shippingRecord = await prisma.address.create({
     data: {
-      ...input.shippingAddress,
+      ...validatedShipping,
       customerId,
     },
   });
 
-  let billingAddress = shippingAddress;
+  let billingRecord = shippingRecord;
   if (!input.useShippingAsBilling && input.billingAddress) {
-    billingAddress = await prisma.address.create({
+    const validatedBilling = validateAddressInput(input.billingAddress);
+    billingRecord = await prisma.address.create({
       data: {
-        ...input.billingAddress,
+        ...validatedBilling,
         customerId,
       },
     });
   }
 
-  return await prisma.checkoutSession.update({
-    where: { id: session.id },
+  await prisma.checkoutSession.update({
+    where: { id: checkoutId },
     data: {
-      shippingAddressId: shippingAddress.id,
-      billingAddressId: billingAddress.id,
-    },
-    include: {
-      shippingAddress: true,
-      billingAddress: true,
+      shippingAddressId: shippingRecord.id,
+      billingAddressId: billingRecord.id,
     },
   });
+
+  return recalculateCheckoutSession(checkoutId, cookieStore, currentUser);
 }
+
+// Backward-compatible alias
+export const updateCheckoutAddress = setCheckoutAddress;
 
 export async function selectDeliveryOption(
   checkoutId: string,
-  input: SelectDeliveryOptionInput,
+  input: { deliveryOption: string },
   customStore?: CookieStoreLike,
   customUser?: CurrentUser | null
 ) {
-  const session = await getCheckoutSession(checkoutId, customStore, customUser);
-
-  // In a real implementation, you would validate the option and calculate the cost.
-  // For now, we stub it based on PRD requirements.
-  const deliveryAmountPaise = input.deliveryOption === "standard" ? 50000 : 100000; // Fake prices for now
-  
-  return await prisma.checkoutSession.update({
-    where: { id: session.id },
-    data: {
-      deliveryOption: input.deliveryOption,
-      deliveryAmountPaise,
-      totalAmountPaise: session.subtotalPaise + session.taxAmountPaise + deliveryAmountPaise,
-    },
-  });
+  return recalculateCheckoutSession(checkoutId, customStore, customUser);
 }
 
 export async function confirmCheckout(
@@ -204,27 +428,12 @@ export async function confirmCheckout(
   customStore?: CookieStoreLike,
   customUser?: CurrentUser | null
 ) {
-  const session = await getCheckoutSession(checkoutId, customStore, customUser);
-
-  if (!session.shippingAddressId || !session.billingAddressId) {
-    throw new ValidationError("Shipping and billing addresses are required.");
+  const session = await recalculateCheckoutSession(checkoutId, customStore, customUser);
+  if (!session.shippingAddressId) {
+    throw new ValidationError("Shipping address is required.");
   }
-  
-  if (!session.email) {
-    throw new ValidationError("Contact information is required.");
+  if (!session.totals.isDeliverable) {
+    throw new ValidationError("Selected delivery address is not serviceable.");
   }
-
-  // Double check cart pricing before final confirmation
-  const cartView = await getCartWithFreshPricing(customStore, customUser);
-  
-  if (cartView.subtotalPaise !== session.subtotalPaise || cartView.hasUnavailableItems) {
-     throw new ValidationError("Cart totals have changed. Please review your order.");
-  }
-
-  return await prisma.checkoutSession.update({
-    where: { id: session.id },
-    data: {
-      status: CheckoutStatus.COMPLETED,
-    },
-  });
+  return session;
 }
