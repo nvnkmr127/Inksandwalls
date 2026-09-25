@@ -6,13 +6,16 @@ import {
   resolveShippingRule,
   DEFAULT_SHIPPING_RULE,
 } from "@/lib/shipping/shipping-engine";
+import { calculateGstTaxes } from "@/lib/tax/tax-calculator";
 import type { ShippingRuleData } from "@/lib/shipping/types";
+import type { HsnTaxSummary } from "@/lib/tax/types";
 
 export interface CheckoutTotalsItemInput {
   id: string;
   productId: string;
   productName: string;
   productType: "PER_AREA" | "FIXED";
+  hsnCode?: string | null;
   unitPricePaise: number;
   quantity: number;
   totalPricePaise: number;
@@ -32,10 +35,22 @@ export interface CalculateCheckoutTotalsInput {
   customerPreviousCouponUsageCount?: number;
   shippingAddress?: CheckoutTotalsAddressInput | null;
   shippingRules?: ShippingRuleData[];
+  sellerState?: string | null;
+  customGstRatePct?: number | null;
 }
 
 export type DeliveryStatus = "PENDING_ADDRESS" | "DELIVERABLE" | "UNDELIVERABLE";
 export type CheckoutTotalsStatus = "VALID" | "RECALCULATING" | "INVALID" | "UNDELIVERABLE";
+
+export interface TaxBreakdownResult {
+  isIntraState: boolean;
+  gstRatePct: number;
+  cgstPaise: number;
+  sgstPaise: number;
+  igstPaise: number;
+  totalTaxPaise: number;
+  hsnSummaries: HsnTaxSummary[];
+}
 
 export interface CheckoutTotalsResult {
   // Line & Cart Totals
@@ -59,8 +74,9 @@ export interface CheckoutTotalsResult {
   isDeliverable: boolean;
   deliveryError: string | null;
 
-  // Taxes (Phase 07.03 placeholder)
+  // Taxes (Authoritative GST Computation)
   taxAmountPaise: number;
+  taxBreakdown: TaxBreakdownResult;
 
   // Final Amounts
   subtotalBeforeTaxPaise: number;
@@ -73,12 +89,19 @@ export interface CheckoutTotalsResult {
 
 /**
  * Single authoritative server-side checkout totals calculation engine.
- * Flow: Cart lines -> Subtotal -> Coupon discount -> Shipping -> Payable subtotal before tax
+ * Flow: Cart lines -> Subtotal -> Coupon discount -> Shipping -> Taxable amount -> GST -> Total Payable
  */
 export function calculateCheckoutTotals(
   input: CalculateCheckoutTotalsInput
 ): CheckoutTotalsResult {
-  const { items, coupon, shippingAddress, shippingRules } = input;
+  const {
+    items,
+    coupon,
+    shippingAddress,
+    shippingRules,
+    sellerState,
+    customGstRatePct,
+  } = input;
 
   // 1. Calculate items subtotal and check availability
   let subtotalPaise = 0;
@@ -156,12 +179,40 @@ export function calculateCheckoutTotals(
     }
   }
 
-  // 4. Tax (Reserved for Phase 07.03 GST)
-  const taxAmountPaise = 0;
+  // 4. Calculate Server-Authoritative GST Taxes
+  const taxResult = calculateGstTaxes({
+    lines: items.map((item) => ({
+      id: item.id,
+      productId: item.productId,
+      productName: item.productName,
+      hsnCode: item.hsnCode,
+      productType: item.productType,
+      quantity: item.quantity,
+      unitPricePaise: item.unitPricePaise,
+      totalPricePaise: item.quantity * item.unitPricePaise,
+    })),
+    discountPaise: couponDiscountPaise,
+    shippingPaise,
+    customerState: shippingAddress?.state || null,
+    sellerState: sellerState || null,
+    customGstRatePct,
+  });
 
-  // 5. Final Payable Subtotal
+  const taxAmountPaise = taxResult.totalTaxAmountPaise;
+
+  const taxBreakdown: TaxBreakdownResult = {
+    isIntraState: taxResult.isIntraState,
+    gstRatePct: taxResult.gstRatePct,
+    cgstPaise: taxResult.totalCgstPaise,
+    sgstPaise: taxResult.totalSgstPaise,
+    igstPaise: taxResult.totalIgstPaise,
+    totalTaxPaise: taxResult.totalTaxAmountPaise,
+    hsnSummaries: taxResult.hsnSummaries,
+  };
+
+  // 5. Final Payable Subtotal & Grand Total
   const subtotalBeforeTaxPaise = discountedSubtotalPaise + shippingPaise;
-  const totalPayablePaise = subtotalBeforeTaxPaise + taxAmountPaise;
+  const totalPayablePaise = taxResult.grandTotalPaise;
 
   // 6. Overall Checkout State
   let status: CheckoutTotalsStatus = "VALID";
@@ -195,6 +246,7 @@ export function calculateCheckoutTotals(
     isDeliverable,
     deliveryError,
     taxAmountPaise,
+    taxBreakdown,
     subtotalBeforeTaxPaise,
     totalPayablePaise,
     status,

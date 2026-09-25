@@ -19,10 +19,14 @@ import {
 } from "./totals-engine";
 import { getActiveShippingRules } from "@/lib/shipping/shipping-service";
 import type { CouponData } from "@/lib/coupons/coupon-engine";
+import { checkCodEligibility } from "@/lib/payment/cod-service";
+import type { CodEligibilityResult, PaymentMethod } from "@/lib/payment/types";
 
 export interface CheckoutSessionSnapshot {
   id: string;
   cartId: string;
+  customerId: string | null;
+  sessionId: string | null;
   status: CheckoutStatus;
   email: string;
   phone: string | null;
@@ -70,6 +74,8 @@ export interface CheckoutSessionSnapshot {
     coupon: CouponData | null;
   };
   totals: CheckoutTotalsResult;
+  paymentMethod: PaymentMethod | null;
+  codEligibility: CodEligibilityResult;
   expiresAt: Date;
   createdAt: Date;
   updatedAt: Date;
@@ -228,6 +234,7 @@ export async function recalculateCheckoutSession(
       productId: item.productId,
       productName: item.productName,
       productType: item.productType,
+      hsnCode: item.hsnCode,
       unitPricePaise: item.unitPricePaise,
       quantity: item.quantity,
       totalPricePaise: item.totalPricePaise,
@@ -245,6 +252,19 @@ export async function recalculateCheckoutSession(
     shippingRules: activeShippingRules,
   });
 
+  // 5. Evaluate COD Eligibility
+  const codEligibility = checkCodEligibility({
+    pincode: session.shippingAddress?.postalCode || null,
+    totalAmountPaise: totals.totalPayablePaise,
+    isDeliverable: totals.isDeliverable,
+  });
+
+  let effectivePaymentMethod = session.paymentMethod as PaymentMethod | null;
+  // If paymentMethod was COD but it is no longer eligible, automatically reset it
+  if (effectivePaymentMethod === "COD" && !codEligibility.eligible) {
+    effectivePaymentMethod = null;
+  }
+
   // Update snapshot in database if changed
   await prisma.checkoutSession.update({
     where: { id: session.id },
@@ -254,12 +274,15 @@ export async function recalculateCheckoutSession(
       deliveryOption: totals.appliedShippingRule ? totals.appliedShippingRule.name : null,
       taxAmountPaise: totals.taxAmountPaise,
       totalAmountPaise: totals.totalPayablePaise,
+      paymentMethod: effectivePaymentMethod,
     },
   });
 
   return {
     id: session.id,
     cartId: session.cartId,
+    customerId: session.customerId,
+    sessionId: session.sessionId,
     status: session.status,
     email: session.email,
     phone: session.phone,
@@ -285,6 +308,8 @@ export async function recalculateCheckoutSession(
       coupon: couponData,
     },
     totals,
+    paymentMethod: effectivePaymentMethod,
+    codEligibility,
     expiresAt: session.expiresAt,
     createdAt: session.createdAt,
     updatedAt: session.updatedAt,
@@ -421,6 +446,48 @@ export async function selectDeliveryOption(
   customUser?: CurrentUser | null
 ) {
   return recalculateCheckoutSession(checkoutId, customStore, customUser);
+}
+
+export async function selectCheckoutPaymentMethod(
+  checkoutId: string,
+  paymentMethod: PaymentMethod,
+  customStore?: CookieStoreLike,
+  customUser?: CurrentUser | null
+): Promise<CheckoutSessionSnapshot> {
+  const cookieStore = customStore || (await cookies());
+  const currentUser = customUser !== undefined ? customUser : await getCurrentUser();
+  const owner = await resolveCartOwner(cookieStore, currentUser);
+
+  const session = await recalculateCheckoutSession(checkoutId, cookieStore, currentUser);
+
+  if (!session.shippingAddressId || !session.shippingAddress) {
+    throw new ValidationError("Please provide a shipping address first.");
+  }
+
+  if (!session.totals.isDeliverable) {
+    throw new ValidationError("Selected delivery address is not serviceable.");
+  }
+
+  if (paymentMethod === "COD") {
+    const eligibility = checkCodEligibility({
+      pincode: session.shippingAddress.postalCode,
+      totalAmountPaise: session.totals.totalPayablePaise,
+      isDeliverable: session.totals.isDeliverable,
+    });
+
+    if (!eligibility.eligible) {
+      throw new ValidationError(eligibility.message);
+    }
+  }
+
+  await prisma.checkoutSession.update({
+    where: { id: checkoutId },
+    data: {
+      paymentMethod,
+    },
+  });
+
+  return recalculateCheckoutSession(checkoutId, cookieStore, currentUser);
 }
 
 export async function confirmCheckout(

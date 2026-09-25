@@ -18,4 +18,23 @@ execSync(
   { stdio: "inherit" }
 );
 
+console.log("\n=== Stage 4: Address, Shipping & Checkout Totals Tests ===");
+execSync(
+  `tsx -e "require('module')._cache[require.resolve('server-only')] = { exports: {} }; require('./src/lib/address/__tests__/address.test.ts').runAddressTests(); require('./src/lib/shipping/__tests__/shipping.test.ts').runShippingEngineTests(); require('./src/lib/checkout/__tests__/checkout-totals.test.ts').runCheckoutTotalsEngineTests();"`,
+  { stdio: "inherit" }
+);
+
+console.log("\n=== Stage 5: GST / Tax Computation & Invoice PDF -> R2 Tests ===");
+execSync(
+  `tsx -e "require('module')._cache[require.resolve('server-only')] = { exports: {} }; (async () => { require('./src/lib/tax/__tests__/tax.test.ts').runTaxEngineTests(); await require('./src/lib/invoice/__tests__/invoice.test.ts').runInvoiceTests(); })();"`,
+  { stdio: "inherit" }
+);
+
+console.log("\n=== Stage 6: Payment Gates & Order Placement Transaction Tests ===");
+execSync(
+  `tsx -e "require('module')._cache[require.resolve('server-only')] = { exports: {} }; (async () => { require('./src/lib/payment/__tests__/payment-gate.test.ts').runPaymentGateTests(); await require('./src/lib/order/__tests__/order-transaction.test.ts').runOrderTransactionTests(); })();"`,
+  { stdio: "inherit" }
+);
+
 console.log("\n✔ ALL INKS & WALLS TEST SUITES PASSED SUCCESSFULLY!");
+

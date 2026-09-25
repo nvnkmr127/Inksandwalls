@@ -5,7 +5,7 @@ import type { CouponData } from "@/lib/coupons/coupon-engine";
 import type { ShippingRuleData } from "@/lib/shipping/types";
 
 export function runCheckoutTotalsEngineTests() {
-  console.log("--> Running Micro-Phase 07.02: Checkout Totals Engine Tests...");
+  console.log("--> Running Micro-Phase 07.02 & 07.03: Checkout Totals Engine with GST Tests...");
 
   const mockShippingRules: ShippingRuleData[] = [
     {
@@ -40,15 +40,16 @@ export function runCheckoutTotalsEngineTests() {
   ];
 
   // -------------------------------------------------------------
-  // Test 1: Basic Line Item Subtotal
+  // Test 1: Basic Line Item Subtotal & GST
   // -------------------------------------------------------------
-  console.log("  1. Testing Line Item Subtotal Calculation...");
+  console.log("  1. Testing Line Item Subtotal & Tax Calculation...");
   const items = [
     {
       id: "item-1",
       productId: "prod-1",
       productName: "Custom Mural Wallpaper",
       productType: "PER_AREA" as const,
+      hsnCode: "4814",
       unitPricePaise: 450000, // ₹4,500
       quantity: 1,
       totalPricePaise: 450000,
@@ -58,6 +59,7 @@ export function runCheckoutTotalsEngineTests() {
       productId: "prod-2",
       productName: "Canvas Art Print",
       productType: "FIXED" as const,
+      hsnCode: "4911",
       unitPricePaise: 120000, // ₹1,200
       quantity: 2,
       totalPricePaise: 240000,
@@ -65,6 +67,7 @@ export function runCheckoutTotalsEngineTests() {
   ];
 
   // Subtotal = 450000 + 240000 = 690000 paise (₹6,900)
+  // Taxable: ₹6,900. 18% GST = 124200 paise (₹1,242)
   const totalsPendingAddress = calculateCheckoutTotals({
     items,
     shippingRules: mockShippingRules,
@@ -77,12 +80,14 @@ export function runCheckoutTotalsEngineTests() {
   assert.strictEqual(totalsPendingAddress.shippingPaise, 0);
   assert.strictEqual(totalsPendingAddress.deliveryStatus, "PENDING_ADDRESS");
   assert.strictEqual(totalsPendingAddress.status, "VALID");
-  assert.strictEqual(totalsPendingAddress.totalPayablePaise, 690000);
+  assert.strictEqual(totalsPendingAddress.subtotalBeforeTaxPaise, 690000);
+  assert.strictEqual(totalsPendingAddress.taxAmountPaise, 124200);
+  assert.strictEqual(totalsPendingAddress.totalPayablePaise, 814200); // 690000 + 124200
 
   // -------------------------------------------------------------
-  // Test 2: Percentage Coupon Application
+  // Test 2: Percentage Coupon Application & Tax Calculation
   // -------------------------------------------------------------
-  console.log("  2. Testing Percentage Coupon Discount...");
+  console.log("  2. Testing Percentage Coupon Discount with GST...");
   const percentageCoupon: CouponData = {
     id: "coupon-1",
     code: "SAVE10",
@@ -94,7 +99,11 @@ export function runCheckoutTotalsEngineTests() {
     isActive: true,
   };
 
-  // Subtotal: 690000 paise. 10% = 69000 paise. Capped at maxDiscount 50000 paise.
+  // Subtotal: 690000 paise. 10% = 69000 paise. Capped at maxDiscount 50000 paise (₹500).
+  // Discounted Subtotal: 640000 paise (₹6,400).
+  // Free shipping in 500* zone.
+  // Tax: 18% of 640000 = 115200 paise (₹1,152).
+  // Total payable = 640000 + 115200 = 755200 paise (₹7,552).
   const totalsWithCoupon = calculateCheckoutTotals({
     items,
     coupon: percentageCoupon,
@@ -105,28 +114,34 @@ export function runCheckoutTotalsEngineTests() {
   assert.strictEqual(totalsWithCoupon.subtotalPaise, 690000);
   assert.strictEqual(totalsWithCoupon.couponDiscountPaise, 50000);
   assert.strictEqual(totalsWithCoupon.discountedSubtotalPaise, 640000);
-  // Order is >= ₹1,000 threshold for metro -> Free shipping!
   assert.strictEqual(totalsWithCoupon.isFreeShipping, true);
   assert.strictEqual(totalsWithCoupon.shippingPaise, 0);
-  assert.strictEqual(totalsWithCoupon.totalPayablePaise, 640000);
+  assert.strictEqual(totalsWithCoupon.subtotalBeforeTaxPaise, 640000);
+  assert.strictEqual(totalsWithCoupon.taxAmountPaise, 115200);
+  assert.strictEqual(totalsWithCoupon.totalPayablePaise, 755200);
 
   // -------------------------------------------------------------
-  // Test 3: Shipping Cost Below Threshold
+  // Test 3: Shipping Cost Below Threshold with Shipping GST
   // -------------------------------------------------------------
-  console.log("  3. Testing Shipping Cost below Free Shipping Threshold...");
+  console.log("  3. Testing Shipping Cost & Shipping GST...");
   const smallItem = [
     {
       id: "item-3",
       productId: "prod-3",
       productName: "Sample Swatch",
       productType: "FIXED" as const,
+      hsnCode: "4814",
       unitPricePaise: 49900, // ₹499
       quantity: 1,
       totalPricePaise: 49900,
     },
   ];
 
-  // Address 400001 (Mumbai) -> Standard rule: ₹150 shipping (subtotal < ₹1,500)
+  // Address 400001 (Mumbai) -> Standard rule: ₹150 shipping (15000 paise)
+  // Taxable items: 49900 paise. Item 18% IGST: 8982 paise.
+  // Taxable shipping: 15000 paise. Shipping 18% IGST: 2700 paise.
+  // Total Tax: 8982 + 2700 = 11682 paise.
+  // Total Payable: 49900 + 15000 + 11682 = 76582 paise.
   const totalsSmallOrder = calculateCheckoutTotals({
     items: smallItem,
     shippingAddress: { postalCode: "400001", state: "Maharashtra" },
@@ -136,9 +151,9 @@ export function runCheckoutTotalsEngineTests() {
   assert.strictEqual(totalsSmallOrder.subtotalPaise, 49900);
   assert.strictEqual(totalsSmallOrder.shippingPaise, 15000);
   assert.strictEqual(totalsSmallOrder.isFreeShipping, false);
-  assert.strictEqual(totalsSmallOrder.amountRemainingForFreeShippingPaise, 100100); // 150000 - 49900
-  // Total payable: 49900 + 15000 = 64900 paise (₹649)
-  assert.strictEqual(totalsSmallOrder.totalPayablePaise, 64900);
+  assert.strictEqual(totalsSmallOrder.subtotalBeforeTaxPaise, 64900);
+  assert.strictEqual(totalsSmallOrder.taxAmountPaise, 11682);
+  assert.strictEqual(totalsSmallOrder.totalPayablePaise, 76582);
 
   // -------------------------------------------------------------
   // Test 4: Fixed Coupon & Subtotal Threshold Invalidation
@@ -164,7 +179,7 @@ export function runCheckoutTotalsEngineTests() {
 
   assert.strictEqual(totalsInvalidCoupon.couponDiscountPaise, 0);
   assert.ok(totalsInvalidCoupon.couponWarning?.includes("minimum cart value"));
-  assert.strictEqual(totalsInvalidCoupon.totalPayablePaise, 49900 + 15000);
+  assert.strictEqual(totalsInvalidCoupon.totalPayablePaise, 76582);
 
   // -------------------------------------------------------------
   // Test 5: Undeliverable Address Handling

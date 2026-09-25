@@ -246,6 +246,21 @@ export function CheckoutSummary({
           )}
         </div>
 
+        {/* Estimated GST Tax */}
+        <div className="flex justify-between text-neutral-600">
+          <span className="flex items-center gap-1">
+            <span>Estimated GST</span>
+            {totals.taxBreakdown && (
+              <span className="text-[11px] text-neutral-400">
+                ({totals.taxBreakdown.isIntraState ? `CGST ${totals.taxBreakdown.gstRatePct / 2}% + SGST ${totals.taxBreakdown.gstRatePct / 2}%` : `IGST ${totals.taxBreakdown.gstRatePct}%`})
+              </span>
+            )}
+          </span>
+          <span className="font-medium text-neutral-900">
+            {formatPaiseToRupees(totals.taxAmountPaise)}
+          </span>
+        </div>
+
         {/* Deliverability Alert if Undeliverable */}
         {totals.deliveryStatus === "UNDELIVERABLE" && (
           <div className="p-3 bg-rose-50 border border-rose-200 rounded-lg text-rose-800 text-xs flex items-start gap-2">
@@ -254,12 +269,22 @@ export function CheckoutSummary({
           </div>
         )}
 
-        {/* Total (Before Tax) */}
+        {/* Selected Payment Method Notice */}
+        {session.paymentMethod && (
+          <div className="flex items-center justify-between text-xs py-1.5 px-2.5 rounded-lg bg-neutral-100 border border-neutral-200 text-neutral-700">
+            <span>Payment Method</span>
+            <span className="font-semibold text-neutral-900">
+              {session.paymentMethod === "COD" ? "Cash on Delivery" : "Online (Razorpay)"}
+            </span>
+          </div>
+        )}
+
+        {/* Total (Including GST) */}
         <div className="pt-4 border-t border-neutral-200 flex justify-between items-baseline">
           <div>
             <p className="text-base font-bold text-neutral-900">Total Payable</p>
             <p className="text-[11px] text-neutral-500">
-              Excluding taxes (calculated at checkout)
+              Including all taxes & GST
             </p>
           </div>
           <p className="text-xl font-bold tracking-tight text-neutral-900">

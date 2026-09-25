@@ -85,6 +85,7 @@ model Customer {
   addresses Address[]
   checkouts CheckoutSession[]
   couponUsages CouponUsage[]
+  orders       Order[]
 
   @@map("customers")
 }
@@ -160,6 +161,7 @@ model Product {
   variants    ProductVariant[]
   media       ProductMedia[]
   cartItems   CartItem[]
+  orderItems  OrderItem[]
 
   createdAt   DateTime    @default(now()) @map("created_at")
   updatedAt   DateTime    @updatedAt @map("updated_at")
@@ -182,8 +184,9 @@ model ProductVariant {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
-  cartItems CartItem[]
+  product    Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  cartItems  CartItem[]
+  orderItems OrderItem[]
 
   @@index([productId])
   @@index([sku])
@@ -377,6 +380,7 @@ model CheckoutSession {
   
   deliveryOption    String?        @map("delivery_option")
   deliveryAmountPaise Int?         @map("delivery_amount_paise")
+  paymentMethod     PaymentMethod? @map("payment_method")
   
   // Pricing snapshot
   subtotalPaise     Int            @map("subtotal_paise")
@@ -438,4 +442,186 @@ model CouponUsage {
   @@index([cartId])
   @@map("coupon_usages")
 }
+
+enum PaymentMethod {
+  RAZORPAY
+  COD
+}
+
+enum PaymentStatus {
+  PENDING
+  UNPAID
+  AUTHORIZED
+  PAID
+  FAILED
+  REFUNDED
+}
+
+enum FulfillmentStatus {
+  CONFIRMED
+  IN_PRODUCTION
+  READY_TO_SHIP
+  SHIPPED
+  DELIVERED
+  CANCELLED
+  RETURN_REQUESTED
+  RETURNED
+}
+
+model Order {
+  id                  String            @id @default(cuid())
+  orderNumber         String            @unique @map("order_number")
+  
+  customerId          String?           @map("customer_id")
+  customer            Customer?         @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  
+  guestSessionId      String?           @map("guest_session_id")
+  customerEmail       String            @map("customer_email")
+  customerPhone       String?           @map("customer_phone")
+  customerName        String            @map("customer_name")
+  
+  // Address snapshots (JSON for complete immutable historical isolation)
+  shippingAddress     Json              @map("shipping_address")
+  billingAddress      Json              @map("billing_address")
+  
+  // Monetary snapshots in integer paise
+  subtotalPaise       Int               @map("subtotal_paise")
+  discountPaise       Int               @default(0) @map("discount_paise")
+  shippingPaise       Int               @default(0) @map("shipping_paise")
+  taxPaise            Int               @default(0) @map("tax_paise")
+  totalPaise          Int               @map("total_paise")
+  
+  // Applied Coupon snapshot
+  couponCode          String?           @map("coupon_code")
+  couponSnapshot      Json?             @map("coupon_snapshot")
+  
+  // Tax & Shipping details snapshot
+  taxBreakdown        Json?             @map("tax_breakdown")
+  shippingOption      String?           @map("shipping_option")
+  
+  // Statuses
+  paymentMethod       PaymentMethod     @map("payment_method")
+  paymentStatus       PaymentStatus     @default(PENDING) @map("payment_status")
+  fulfillmentStatus   FulfillmentStatus @default(CONFIRMED) @map("fulfillment_status")
+  
+  // Online Payment reference
+  razorpayOrderId     String?           @unique @map("razorpay_order_id")
+  razorpayPaymentId   String?           @unique @map("razorpay_payment_id")
+  razorpaySignature   String?           @map("razorpay_signature")
+  idempotencyKey      String?           @unique @map("idempotency_key")
+  
+  // GST Invoice reference
+  invoiceNumber       String?           @unique @map("invoice_number")
+  invoiceUrl          String?           @map("invoice_url")
+  invoiceR2Key        String?           @map("invoice_r2_key")
+  invoiceGeneratedAt  DateTime?         @map("invoice_generated_at")
+  
+  // Fulfillment placeholders for Phase 08
+  courierName         String?           @map("courier_name")
+  awb                 String?
+  trackingUrl         String?           @map("tracking_url")
+  shippedAt           DateTime?         @map("shipped_at")
+  deliveredAt         DateTime?         @map("delivered_at")
+  cancelledAt         DateTime?         @map("cancelled_at")
+  cancelReason        String?           @map("cancel_reason")
+  
+  items               OrderItem[]
+  payments            Payment[]
+  
+  createdAt           DateTime          @default(now()) @map("created_at")
+  updatedAt           DateTime          @updatedAt @map("updated_at")
+  
+  @@index([orderNumber])
+  @@index([customerId])
+  @@index([customerEmail])
+  @@index([paymentStatus])
+  @@index([fulfillmentStatus])
+  @@index([createdAt])
+  @@map("orders")
+}
+
+model OrderItem {
+  id                  String         @id @default(cuid())
+  orderId             String         @map("order_id")
+  order               Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  
+  productId           String?        @map("product_id")
+  product             Product?       @relation(fields: [productId], references: [id], onDelete: SetNull)
+  
+  variantId           String?        @map("variant_id")
+  variant             ProductVariant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
+  
+  // Product Snapshot
+  productName         String         @map("product_name")
+  productSlug         String?        @map("product_slug")
+  productType         ProductType    @map("product_type")
+  variantName         String?        @map("variant_name")
+  sku                 String?
+  hsnCode             String?        @map("hsn_code")
+  returnable          Boolean        @default(true)
+  mediaKey            String?        @map("media_key")
+  options             Json?
+  
+  // PER_AREA dimensions snapshot
+  width               Float?
+  height              Float?
+  unit                String?
+  widthFt             Float?         @map("width_ft")
+  heightFt            Float?         @map("height_ft")
+  enteredAreaSqft     Float?         @map("entered_area_sqft")
+  wastagePct          Float?         @map("wastage_pct")
+  wastageAreaSqft     Float?         @map("wastage_area_sqft")
+  areaWithWastageSqft Float?         @map("area_with_wastage_sqft")
+  minAreaSqft         Float?         @map("min_area_sqft")
+  isMinAreaApplied    Boolean?       @map("is_min_area_applied")
+  billableAreaSqft    Float?         @map("billable_area_sqft")
+  rollWidthFt         Float?         @map("roll_width_ft")
+  panelsNeeded        Int?           @map("panels_needed")
+  ratePaise           Int?           @map("rate_paise")
+  
+  // Pricing snapshot (in integer paise)
+  unitPricePaise      Int            @map("unit_price_paise")
+  quantity            Int            @default(1)
+  totalPricePaise     Int            @map("total_price_paise")
+  discountPaise       Int            @default(0) @map("discount_paise")
+  taxableAmountPaise  Int            @default(0) @map("taxable_amount_paise")
+  gstRatePct          Float          @default(18) @map("gst_rate_pct")
+  cgstPaise           Int            @default(0) @map("cgst_paise")
+  sgstPaise           Int            @default(0) @map("sgst_paise")
+  igstPaise           Int            @default(0) @map("igst_paise")
+  totalTaxPaise       Int            @default(0) @map("total_tax_paise")
+  netTotalPaise       Int            @map("net_total_paise")
+  
+  createdAt           DateTime       @default(now()) @map("created_at")
+  
+  @@index([orderId])
+  @@index([productId])
+  @@index([variantId])
+  @@map("order_items")
+}
+
+model Payment {
+  id                  String         @id @default(cuid())
+  orderId             String         @map("order_id")
+  order               Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  
+  provider            String         // "RAZORPAY" | "COD"
+  providerPaymentId   String?        @unique @map("provider_payment_id")
+  providerOrderId     String?        @map("provider_order_id")
+  providerSignature   String?        @map("provider_signature")
+  
+  amountPaise         Int            @map("amount_paise")
+  currency            String         @default("INR")
+  status              PaymentStatus  @default(PENDING)
+  metadata            Json?
+  
+  createdAt           DateTime       @default(now()) @map("created_at")
+  updatedAt           DateTime       @updatedAt @map("updated_at")
+  
+  @@index([orderId])
+  @@index([providerPaymentId])
+  @@index([status])
+  @@map("payments")
+}
+
 
