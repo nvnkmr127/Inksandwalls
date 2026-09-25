@@ -67,6 +67,21 @@ export interface StorefrontProductDetail {
     isActive: boolean;
     sortOrder: number;
   }>;
+  reviews: Array<{
+    id: string;
+    rating: number;
+    content: string | null;
+    createdAt: Date;
+    customer: {
+      user: {
+        name: string | null;
+      };
+    };
+  }>;
+  reviewSummary: {
+    averageRating: number;
+    totalCount: number;
+  };
 }
 
 export interface StorefrontProductsQueryOptions {
@@ -385,10 +400,46 @@ export async function getStorefrontProductBySlug(
             sortOrder: true,
           },
         },
+        reviews: {
+          where: {
+            status: "APPROVED",
+          },
+          orderBy: {
+            createdAt: "desc",
+          },
+          select: {
+            id: true,
+            rating: true,
+            content: true,
+            createdAt: true,
+            customer: {
+              select: {
+                user: {
+                  select: { name: true },
+                },
+              },
+            },
+          },
+        },
       },
     });
 
-    return product;
+    if (!product) return null;
+
+    const reviews = product.reviews || [];
+    const totalCount = reviews.length;
+    const averageRating = totalCount > 0 
+      ? reviews.reduce((sum, r) => sum + r.rating, 0) / totalCount 
+      : 0;
+
+    return {
+      ...product,
+      reviews,
+      reviewSummary: {
+        averageRating,
+        totalCount,
+      }
+    };
   } catch (error) {
     logger.error("Failed to load storefront product by slug", {
       slug: normalizedSlug,

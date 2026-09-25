@@ -8,6 +8,10 @@ import {
 } from "@/lib/order/order-service";
 import { createRazorpayOrder } from "@/lib/payment/razorpay-service";
 import { recalculateCheckoutSession } from "@/lib/checkout/checkout-service";
+import { addItemToCart } from "@/lib/cart/cart-service";
+import { requireAuth } from "@/lib/auth/guards";
+import { prisma } from "@/lib/prisma";
+import { getCustomerOrderByNumber } from "@/lib/order/order-list-service";
 import type {
   PlaceRazorpayOrderInput,
   PlaceCodOrderInput,
@@ -115,6 +119,39 @@ export async function getOrderDetailsAction(
       return { success: false, error: "Order not found." };
     }
     return { success: true, order };
+  } catch (error) {
+    return { success: false, error: (error as Error).message };
+  }
+}
+
+export async function reorderOrderAction(
+  orderNumber: string
+): Promise<{ success: boolean; error?: string; cartId?: string }> {
+  try {
+    const user = await requireAuth();
+    const order = await getCustomerOrderByNumber(orderNumber);
+    if (!order) {
+      throw new Error("Order not found");
+    }
+
+    let lastCartId = null;
+    for (const item of order.items) {
+      if (!item.productId) continue;
+      
+      const cart = await addItemToCart({
+        productId: item.productId,
+        productType: item.productType as "PER_AREA" | "FIXED",
+        quantity: item.quantity,
+        width: item.width || undefined,
+        height: item.height || undefined,
+        unit: item.unit as "INCHES" | "FEET" | "CENTIMETERS" | "METERS" | undefined,
+        variantId: item.variantId,
+        options: item.options ? (item.options as Record<string, unknown>) : undefined,
+      });
+      lastCartId = cart.id;
+    }
+
+    return { success: true, cartId: lastCartId || undefined };
   } catch (error) {
     return { success: false, error: (error as Error).message };
   }

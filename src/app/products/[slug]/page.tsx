@@ -6,7 +6,8 @@ import { getStorefrontProductBySlug } from "@/lib/storefront/catalog-service";
 import { formatProductPriceDisplay } from "@/lib/money";
 import { ProductGallery } from "@/components/storefront/product-gallery";
 import { ProductConfigurator } from "@/components/storefront/product-configurator";
-import { ChevronRight, ShieldCheck, Truck } from "lucide-react";
+import { ProductReviews } from "@/components/storefront/product-reviews";
+import { ChevronRight, ShieldCheck, Truck, Star } from "lucide-react";
 
 interface ProductPageProps {
   params: Promise<{ slug: string }>;
@@ -126,6 +127,17 @@ export default async function ProductDetailPage({ params }: ProductPageProps) {
                 </span>
               )}
             </div>
+
+            {/* Rating Summary Link */}
+            {product.reviewSummary.totalCount > 0 && (
+              <div className="flex items-center gap-1.5 pt-1 text-sm text-muted-foreground">
+                <div className="flex text-yellow-500">
+                  <Star className="h-4 w-4 fill-current" />
+                </div>
+                <span className="font-medium text-foreground">{product.reviewSummary.averageRating.toFixed(1)}</span>
+                <span>({product.reviewSummary.totalCount} reviews)</span>
+              </div>
+            )}
 
             {/* Description */}
             {product.description && (
@@ -250,6 +262,20 @@ export default async function ProductDetailPage({ params }: ProductPageProps) {
             </div>
           )}
         </div>
+      </section>
+
+      {/* Customer Reviews Section */}
+      <section className="border-t border-border pt-10 space-y-6">
+        <div>
+          <h2 className="text-xl font-bold tracking-tight text-foreground">
+            Customer Reviews
+          </h2>
+          <p className="text-sm text-muted-foreground mt-1">
+            Real feedback from verified purchasers.
+          </p>
+        </div>
+        
+        <ProductReviews reviews={product.reviews} summary={product.reviewSummary} />
       </section>
     </div>
   );

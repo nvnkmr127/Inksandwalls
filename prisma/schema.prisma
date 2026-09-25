@@ -42,8 +42,8 @@ model User {
   createdAt DateTime   @default(now()) @map("created_at")
   updatedAt DateTime   @updatedAt @map("updated_at")
 
-  accounts Account[]
-  customer Customer?
+  accounts  Account[]
+  customer  Customer?
   auditLogs AuditLog[]
 
   @@index([email])
@@ -78,14 +78,16 @@ model Customer {
   id        String   @id @default(cuid())
   userId    String   @unique @map("user_id")
   createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime   @updatedAt @map("updated_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-  carts Cart[]
-  addresses Address[]
-  checkouts CheckoutSession[]
+  user         User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  carts        Cart[]
+  addresses    Address[]
+  checkouts    CheckoutSession[]
   couponUsages CouponUsage[]
   orders       Order[]
+  wishlists    Wishlist[]
+  reviews      Review[]
 
   @@map("customers")
 }
@@ -121,7 +123,7 @@ model Category {
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
-  products    Product[]
+  products Product[]
 
   @@index([slug])
   @@index([isActive])
@@ -141,30 +143,33 @@ model Product {
   description String?     @db.Text
   productType ProductType @map("product_type")
   isActive    Boolean     @default(true) @map("is_active")
-  
-  // Monetary representation in integer minor units (paise)
-  price       Int?        @map("price")
-  rate        Int?        @map("rate")
-  
-  // PER_AREA product fields
-  wastage     Float?      @map("wastage")
-  minArea     Float?      @map("min_area")
-  rollWidth   Float?      @map("roll_width")
-  
-  // Catalogue configuration
-  returnable  Boolean     @default(true) @map("returnable")
-  hsnCode     String?     @map("hsn_code")
-  
-  categoryId  String      @map("category_id")
-  category    Category    @relation(fields: [categoryId], references: [id], onDelete: Restrict)
-  
-  variants    ProductVariant[]
-  media       ProductMedia[]
-  cartItems   CartItem[]
-  orderItems  OrderItem[]
 
-  createdAt   DateTime    @default(now()) @map("created_at")
-  updatedAt   DateTime    @updatedAt @map("updated_at")
+  // Monetary representation in integer minor units (paise)
+  price Int? @map("price")
+  rate  Int? @map("rate")
+
+  // PER_AREA product fields
+  wastage   Float? @map("wastage")
+  minArea   Float? @map("min_area")
+  rollWidth Float? @map("roll_width")
+
+  // Catalogue configuration
+  returnable Boolean @default(true) @map("returnable")
+  hsnCode    String? @map("hsn_code")
+
+  categoryId String   @map("category_id")
+  category   Category @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+
+  variants     ProductVariant[]
+  media        ProductMedia[]
+  cartItems    CartItem[]
+  orderItems   OrderItem[]
+  wishlistedBy Wishlist[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  reviews Review[]
 
   @@index([slug])
   @@index([categoryId])
@@ -184,7 +189,7 @@ model ProductVariant {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  product    Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  product    Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
   cartItems  CartItem[]
   orderItems OrderItem[]
 
@@ -212,22 +217,22 @@ model Collection {
 }
 
 model ProductMedia {
-  id         String   @id @default(cuid())
-  productId  String   @map("product_id")
-  objectKey  String   @map("object_key")
-  altText    String?  @db.Text @map("alt_text")
-  width      Int?
-  height     Int?
-  format     String?
-  mimeType   String?  @map("mime_type")
-  size       Int?
-  metadata   Json?
-  sortOrder  Int      @default(0) @map("sort_order")
-  isPrimary  Boolean  @default(false) @map("is_primary")
-  createdAt  DateTime @default(now()) @map("created_at")
-  updatedAt  DateTime @updatedAt @map("updated_at")
+  id        String   @id @default(cuid())
+  productId String   @map("product_id")
+  objectKey String   @map("object_key")
+  altText   String?  @map("alt_text") @db.Text
+  width     Int?
+  height    Int?
+  format    String?
+  mimeType  String?  @map("mime_type")
+  size      Int?
+  metadata  Json?
+  sortOrder Int      @default(0) @map("sort_order")
+  isPrimary Boolean  @default(false) @map("is_primary")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
-  product    Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
 
   @@index([productId])
   @@index([sortOrder])
@@ -243,20 +248,20 @@ enum CartStatus {
 }
 
 model Cart {
-  id          String      @id @default(cuid())
-  sessionId   String?     @unique @map("session_id") // Guest session identifier
-  customerId  String?     @map("customer_id")
-  customer    Customer?   @relation(fields: [customerId], references: [id], onDelete: SetNull)
-  status      CartStatus  @default(ACTIVE)
-  email       String?
-  phone       String?
-  items       CartItem[]
-  checkout    CheckoutSession?
-  couponId    String?     @map("coupon_id")
-  coupon      Coupon?     @relation(fields: [couponId], references: [id], onDelete: SetNull)
+  id           String           @id @default(cuid())
+  sessionId    String?          @unique @map("session_id") // Guest session identifier
+  customerId   String?          @map("customer_id")
+  customer     Customer?        @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  status       CartStatus       @default(ACTIVE)
+  email        String?
+  phone        String?
+  items        CartItem[]
+  checkout     CheckoutSession?
+  couponId     String?          @map("coupon_id")
+  coupon       Coupon?          @relation(fields: [couponId], references: [id], onDelete: SetNull)
   couponUsages CouponUsage[]
-  createdAt   DateTime    @default(now()) @map("created_at")
-  updatedAt   DateTime    @updatedAt @map("updated_at")
+  createdAt    DateTime         @default(now()) @map("created_at")
+  updatedAt    DateTime         @updatedAt @map("updated_at")
 
   @@index([sessionId])
   @@index([customerId])
@@ -266,53 +271,53 @@ model Cart {
 }
 
 model CartItem {
-  id                  String         @id @default(cuid())
-  cartId              String         @map("cart_id")
-  cart                Cart           @relation(fields: [cartId], references: [id], onDelete: Cascade)
-  
-  productId           String         @map("product_id")
-  product             Product        @relation(fields: [productId], references: [id], onDelete: Restrict)
-  productName         String         @map("product_name")
-  productType         ProductType    @map("product_type")
-  
-  variantId           String?        @map("variant_id")
-  variant             ProductVariant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
-  variantName         String?        @map("variant_name")
-  sku                 String?
-  
+  id     String @id @default(cuid())
+  cartId String @map("cart_id")
+  cart   Cart   @relation(fields: [cartId], references: [id], onDelete: Cascade)
+
+  productId   String      @map("product_id")
+  product     Product     @relation(fields: [productId], references: [id], onDelete: Restrict)
+  productName String      @map("product_name")
+  productType ProductType @map("product_type")
+
+  variantId   String?         @map("variant_id")
+  variant     ProductVariant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
+  variantName String?         @map("variant_name")
+  sku         String?
+
   // PER_AREA dimensions & calculation snapshot
   width               Float?
   height              Float?
   unit                String?
-  widthFt             Float?         @map("width_ft")
-  heightFt            Float?         @map("height_ft")
-  enteredAreaSqft     Float?         @map("entered_area_sqft")
-  wastagePct          Float?         @map("wastage_pct")
-  wastageAreaSqft     Float?         @map("wastage_area_sqft")
-  areaWithWastageSqft Float?         @map("area_with_wastage_sqft")
-  minAreaSqft         Float?         @map("min_area_sqft")
-  isMinAreaApplied    Boolean?       @map("is_min_area_applied")
-  billableAreaSqft    Float?         @map("billable_area_sqft")
-  rollWidthFt         Float?         @map("roll_width_ft")
-  panelsNeeded        Int?           @map("panels_needed")
-  ratePaise           Int?           @map("rate_paise") // minor units per sqft
-  
+  widthFt             Float?   @map("width_ft")
+  heightFt            Float?   @map("height_ft")
+  enteredAreaSqft     Float?   @map("entered_area_sqft")
+  wastagePct          Float?   @map("wastage_pct")
+  wastageAreaSqft     Float?   @map("wastage_area_sqft")
+  areaWithWastageSqft Float?   @map("area_with_wastage_sqft")
+  minAreaSqft         Float?   @map("min_area_sqft")
+  isMinAreaApplied    Boolean? @map("is_min_area_applied")
+  billableAreaSqft    Float?   @map("billable_area_sqft")
+  rollWidthFt         Float?   @map("roll_width_ft")
+  panelsNeeded        Int?     @map("panels_needed")
+  ratePaise           Int?     @map("rate_paise") // minor units per sqft
+
   // Pricing & Quantity (authoritative integer minor units)
-  unitPricePaise      Int            @map("unit_price_paise")
-  quantity            Int            @default(1)
-  totalPricePaise     Int            @map("total_price_paise")
-  
+  unitPricePaise  Int @map("unit_price_paise")
+  quantity        Int @default(1)
+  totalPricePaise Int @map("total_price_paise")
+
   // Configuration snapshots & Media
-  options             Json?
-  mediaKey            String?        @map("media_key")
-  returnable          Boolean        @default(true)
-  hsnCode             String?        @map("hsn_code")
-  
+  options    Json?
+  mediaKey   String? @map("media_key")
+  returnable Boolean @default(true)
+  hsnCode    String? @map("hsn_code")
+
   // Deterministic configuration identity hash
-  configHash          String         @map("config_hash")
-  
-  createdAt           DateTime       @default(now()) @map("created_at")
-  updatedAt           DateTime       @updatedAt @map("updated_at")
+  configHash String @map("config_hash")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   @@unique([cartId, configHash])
   @@index([cartId])
@@ -323,25 +328,25 @@ model CartItem {
 }
 
 model Address {
-  id              String   @id @default(cuid())
-  customerId      String?  @map("customer_id")
-  customer        Customer? @relation(fields: [customerId], references: [id], onDelete: Cascade)
-  
-  firstName       String   @map("first_name")
-  lastName        String   @map("last_name")
-  addressLine1    String   @map("address_line1")
-  addressLine2    String?  @map("address_line2")
-  city            String
-  state           String
-  postalCode      String   @map("postal_code")
-  country         String   @default("IN")
-  phone           String?
-  
+  id         String    @id @default(cuid())
+  customerId String?   @map("customer_id")
+  customer   Customer? @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  firstName    String  @map("first_name")
+  lastName     String  @map("last_name")
+  addressLine1 String  @map("address_line1")
+  addressLine2 String? @map("address_line2")
+  city         String
+  state        String
+  postalCode   String  @map("postal_code")
+  country      String  @default("IN")
+  phone        String?
+
   isDefaultShipping Boolean @default(false) @map("is_default_shipping")
   isDefaultBilling  Boolean @default(false) @map("is_default_billing")
-  
-  createdAt       DateTime @default(now()) @map("created_at")
-  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   // Relations for checkouts
   checkoutsShipping CheckoutSession[] @relation("CheckoutShippingAddress")
@@ -358,38 +363,38 @@ enum CheckoutStatus {
 }
 
 model CheckoutSession {
-  id                String         @id @default(cuid())
-  cartId            String         @unique @map("cart_id")
-  cart              Cart           @relation(fields: [cartId], references: [id], onDelete: Restrict)
-  
-  customerId        String?        @map("customer_id")
-  customer          Customer?      @relation(fields: [customerId], references: [id], onDelete: SetNull)
-  
-  sessionId         String?        @map("session_id") // Guest session
-  
-  status            CheckoutStatus @default(ACTIVE)
-  
-  email             String
-  phone             String?
-  
-  shippingAddressId String?        @map("shipping_address_id")
-  shippingAddress   Address?       @relation("CheckoutShippingAddress", fields: [shippingAddressId], references: [id], onDelete: Restrict)
-  
-  billingAddressId  String?        @map("billing_address_id")
-  billingAddress    Address?       @relation("CheckoutBillingAddress", fields: [billingAddressId], references: [id], onDelete: Restrict)
-  
-  deliveryOption    String?        @map("delivery_option")
-  deliveryAmountPaise Int?         @map("delivery_amount_paise")
-  paymentMethod     PaymentMethod? @map("payment_method")
-  
+  id     String @id @default(cuid())
+  cartId String @unique @map("cart_id")
+  cart   Cart   @relation(fields: [cartId], references: [id], onDelete: Restrict)
+
+  customerId String?   @map("customer_id")
+  customer   Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+
+  sessionId String? @map("session_id") // Guest session
+
+  status CheckoutStatus @default(ACTIVE)
+
+  email String
+  phone String?
+
+  shippingAddressId String?  @map("shipping_address_id")
+  shippingAddress   Address? @relation("CheckoutShippingAddress", fields: [shippingAddressId], references: [id], onDelete: Restrict)
+
+  billingAddressId String?  @map("billing_address_id")
+  billingAddress   Address? @relation("CheckoutBillingAddress", fields: [billingAddressId], references: [id], onDelete: Restrict)
+
+  deliveryOption      String?        @map("delivery_option")
+  deliveryAmountPaise Int?           @map("delivery_amount_paise")
+  paymentMethod       PaymentMethod? @map("payment_method")
+
   // Pricing snapshot
-  subtotalPaise     Int            @map("subtotal_paise")
-  taxAmountPaise    Int            @default(0) @map("tax_amount_paise")
-  totalAmountPaise  Int            @map("total_amount_paise")
-  
-  expiresAt         DateTime       @map("expires_at")
-  createdAt         DateTime       @default(now()) @map("created_at")
-  updatedAt         DateTime       @updatedAt @map("updated_at")
+  subtotalPaise    Int @map("subtotal_paise")
+  taxAmountPaise   Int @default(0) @map("tax_amount_paise")
+  totalAmountPaise Int @map("total_amount_paise")
+
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   @@index([customerId])
   @@index([sessionId])
@@ -403,23 +408,23 @@ enum DiscountType {
 }
 
 model Coupon {
-  id                  String        @id @default(cuid())
-  code                String        @unique
-  discountType        DiscountType  @map("discount_type")
-  discountValue       Int           @map("discount_value") // Percentage (1-100) or Fixed paise
-  minCartValuePaise   Int?          @map("min_cart_value_paise") // Minor units (paise)
-  maxDiscountPaise    Int?          @map("max_discount_paise") // Minor units (paise)
-  startDate           DateTime?     @map("start_date")
-  expiryDate          DateTime?     @map("expiry_date")
-  usageLimit          Int?          @map("usage_limit") // Global usage limit
-  perCustomerLimit    Int?          @map("per_customer_limit") // Per-customer usage limit
-  currentUsageCount   Int           @default(0) @map("current_usage_count")
-  isActive            Boolean       @default(true) @map("is_active")
-  createdAt           DateTime      @default(now()) @map("created_at")
-  updatedAt           DateTime      @updatedAt @map("updated_at")
+  id                String       @id @default(cuid())
+  code              String       @unique
+  discountType      DiscountType @map("discount_type")
+  discountValue     Int          @map("discount_value") // Percentage (1-100) or Fixed paise
+  minCartValuePaise Int?         @map("min_cart_value_paise") // Minor units (paise)
+  maxDiscountPaise  Int?         @map("max_discount_paise") // Minor units (paise)
+  startDate         DateTime?    @map("start_date")
+  expiryDate        DateTime?    @map("expiry_date")
+  usageLimit        Int?         @map("usage_limit") // Global usage limit
+  perCustomerLimit  Int?         @map("per_customer_limit") // Per-customer usage limit
+  currentUsageCount Int          @default(0) @map("current_usage_count")
+  isActive          Boolean      @default(true) @map("is_active")
+  createdAt         DateTime     @default(now()) @map("created_at")
+  updatedAt         DateTime     @updatedAt @map("updated_at")
 
-  carts               Cart[]
-  usages              CouponUsage[]
+  carts  Cart[]
+  usages CouponUsage[]
 
   @@index([code])
   @@index([isActive])
@@ -469,70 +474,69 @@ enum FulfillmentStatus {
 }
 
 model Order {
-  id                  String            @id @default(cuid())
-  orderNumber         String            @unique @map("order_number")
-  
-  customerId          String?           @map("customer_id")
-  customer            Customer?         @relation(fields: [customerId], references: [id], onDelete: SetNull)
-  
-  guestSessionId      String?           @map("guest_session_id")
-  customerEmail       String            @map("customer_email")
-  customerPhone       String?           @map("customer_phone")
-  customerName        String            @map("customer_name")
-  
-  // Address snapshots (JSON for complete immutable historical isolation)
-  shippingAddress     Json              @map("shipping_address")
-  billingAddress      Json              @map("billing_address")
-  
-  // Monetary snapshots in integer paise
-  subtotalPaise       Int               @map("subtotal_paise")
-  discountPaise       Int               @default(0) @map("discount_paise")
-  shippingPaise       Int               @default(0) @map("shipping_paise")
-  taxPaise            Int               @default(0) @map("tax_paise")
-  totalPaise          Int               @map("total_paise")
-  
-  // Applied Coupon snapshot
-  couponCode          String?           @map("coupon_code")
-  couponSnapshot      Json?             @map("coupon_snapshot")
-  
-  // Tax & Shipping details snapshot
-  taxBreakdown        Json?             @map("tax_breakdown")
-  shippingOption      String?           @map("shipping_option")
-  
-  // Statuses
-  paymentMethod       PaymentMethod     @map("payment_method")
-  paymentStatus       PaymentStatus     @default(PENDING) @map("payment_status")
-  fulfillmentStatus   FulfillmentStatus @default(CONFIRMED) @map("fulfillment_status")
-  
-  // Online Payment reference
-  razorpayOrderId     String?           @unique @map("razorpay_order_id")
-  razorpayPaymentId   String?           @unique @map("razorpay_payment_id")
-  razorpaySignature   String?           @map("razorpay_signature")
-  idempotencyKey      String?           @unique @map("idempotency_key")
-  
-  // GST Invoice reference
-  invoiceNumber       String?           @unique @map("invoice_number")
-  invoiceUrl          String?           @map("invoice_url")
-  invoiceR2Key        String?           @map("invoice_r2_key")
-  invoiceGeneratedAt  DateTime?         @map("invoice_generated_at")
-  
-  // Fulfillment placeholders for Phase 08
-  courierName         String?           @map("courier_name")
-  awb                 String?
-  trackingUrl         String?           @map("tracking_url")
-  shippedAt           DateTime?         @map("shipped_at")
-  deliveredAt         DateTime?         @map("delivered_at")
-  cancelledAt         DateTime?         @map("cancelled_at")
-  cancelReason        String?           @map("cancel_reason")
-  
-  items               OrderItem[]
-  payments            Payment[]
-  refunds             Refund[]
+  id          String @id @default(cuid())
+  orderNumber String @unique @map("order_number")
 
-  
-  createdAt           DateTime          @default(now()) @map("created_at")
-  updatedAt           DateTime          @updatedAt @map("updated_at")
-  
+  customerId String?   @map("customer_id")
+  customer   Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+
+  guestSessionId String? @map("guest_session_id")
+  customerEmail  String  @map("customer_email")
+  customerPhone  String? @map("customer_phone")
+  customerName   String  @map("customer_name")
+
+  // Address snapshots (JSON for complete immutable historical isolation)
+  shippingAddress Json @map("shipping_address")
+  billingAddress  Json @map("billing_address")
+
+  // Monetary snapshots in integer paise
+  subtotalPaise Int @map("subtotal_paise")
+  discountPaise Int @default(0) @map("discount_paise")
+  shippingPaise Int @default(0) @map("shipping_paise")
+  taxPaise      Int @default(0) @map("tax_paise")
+  totalPaise    Int @map("total_paise")
+
+  // Applied Coupon snapshot
+  couponCode     String? @map("coupon_code")
+  couponSnapshot Json?   @map("coupon_snapshot")
+
+  // Tax & Shipping details snapshot
+  taxBreakdown   Json?   @map("tax_breakdown")
+  shippingOption String? @map("shipping_option")
+
+  // Statuses
+  paymentMethod     PaymentMethod     @map("payment_method")
+  paymentStatus     PaymentStatus     @default(PENDING) @map("payment_status")
+  fulfillmentStatus FulfillmentStatus @default(CONFIRMED) @map("fulfillment_status")
+
+  // Online Payment reference
+  razorpayOrderId   String? @unique @map("razorpay_order_id")
+  razorpayPaymentId String? @unique @map("razorpay_payment_id")
+  razorpaySignature String? @map("razorpay_signature")
+  idempotencyKey    String? @unique @map("idempotency_key")
+
+  // GST Invoice reference
+  invoiceNumber      String?   @unique @map("invoice_number")
+  invoiceUrl         String?   @map("invoice_url")
+  invoiceR2Key       String?   @map("invoice_r2_key")
+  invoiceGeneratedAt DateTime? @map("invoice_generated_at")
+
+  // Fulfillment placeholders for Phase 08
+  courierName  String?   @map("courier_name")
+  awb          String?
+  trackingUrl  String?   @map("tracking_url")
+  shippedAt    DateTime? @map("shipped_at")
+  deliveredAt  DateTime? @map("delivered_at")
+  cancelledAt  DateTime? @map("cancelled_at")
+  cancelReason String?   @map("cancel_reason")
+
+  items    OrderItem[]
+  payments Payment[]
+  refunds  Refund[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
   @@index([orderNumber])
   @@index([customerId])
   @@index([customerEmail])
@@ -545,59 +549,59 @@ model Order {
 }
 
 model OrderItem {
-  id                  String         @id @default(cuid())
-  orderId             String         @map("order_id")
-  order               Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  
-  productId           String?        @map("product_id")
-  product             Product?       @relation(fields: [productId], references: [id], onDelete: SetNull)
-  
-  variantId           String?        @map("variant_id")
-  variant             ProductVariant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
-  
+  id      String @id @default(cuid())
+  orderId String @map("order_id")
+  order   Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  productId String?  @map("product_id")
+  product   Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+
+  variantId String?         @map("variant_id")
+  variant   ProductVariant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
+
   // Product Snapshot
-  productName         String         @map("product_name")
-  productSlug         String?        @map("product_slug")
-  productType         ProductType    @map("product_type")
-  variantName         String?        @map("variant_name")
-  sku                 String?
-  hsnCode             String?        @map("hsn_code")
-  returnable          Boolean        @default(true)
-  mediaKey            String?        @map("media_key")
-  options             Json?
-  
+  productName String      @map("product_name")
+  productSlug String?     @map("product_slug")
+  productType ProductType @map("product_type")
+  variantName String?     @map("variant_name")
+  sku         String?
+  hsnCode     String?     @map("hsn_code")
+  returnable  Boolean     @default(true)
+  mediaKey    String?     @map("media_key")
+  options     Json?
+
   // PER_AREA dimensions snapshot
   width               Float?
   height              Float?
   unit                String?
-  widthFt             Float?         @map("width_ft")
-  heightFt            Float?         @map("height_ft")
-  enteredAreaSqft     Float?         @map("entered_area_sqft")
-  wastagePct          Float?         @map("wastage_pct")
-  wastageAreaSqft     Float?         @map("wastage_area_sqft")
-  areaWithWastageSqft Float?         @map("area_with_wastage_sqft")
-  minAreaSqft         Float?         @map("min_area_sqft")
-  isMinAreaApplied    Boolean?       @map("is_min_area_applied")
-  billableAreaSqft    Float?         @map("billable_area_sqft")
-  rollWidthFt         Float?         @map("roll_width_ft")
-  panelsNeeded        Int?           @map("panels_needed")
-  ratePaise           Int?           @map("rate_paise")
-  
+  widthFt             Float?   @map("width_ft")
+  heightFt            Float?   @map("height_ft")
+  enteredAreaSqft     Float?   @map("entered_area_sqft")
+  wastagePct          Float?   @map("wastage_pct")
+  wastageAreaSqft     Float?   @map("wastage_area_sqft")
+  areaWithWastageSqft Float?   @map("area_with_wastage_sqft")
+  minAreaSqft         Float?   @map("min_area_sqft")
+  isMinAreaApplied    Boolean? @map("is_min_area_applied")
+  billableAreaSqft    Float?   @map("billable_area_sqft")
+  rollWidthFt         Float?   @map("roll_width_ft")
+  panelsNeeded        Int?     @map("panels_needed")
+  ratePaise           Int?     @map("rate_paise")
+
   // Pricing snapshot (in integer paise)
-  unitPricePaise      Int            @map("unit_price_paise")
-  quantity            Int            @default(1)
-  totalPricePaise     Int            @map("total_price_paise")
-  discountPaise       Int            @default(0) @map("discount_paise")
-  taxableAmountPaise  Int            @default(0) @map("taxable_amount_paise")
-  gstRatePct          Float          @default(18) @map("gst_rate_pct")
-  cgstPaise           Int            @default(0) @map("cgst_paise")
-  sgstPaise           Int            @default(0) @map("sgst_paise")
-  igstPaise           Int            @default(0) @map("igst_paise")
-  totalTaxPaise       Int            @default(0) @map("total_tax_paise")
-  netTotalPaise       Int            @map("net_total_paise")
-  
-  createdAt           DateTime       @default(now()) @map("created_at")
-  
+  unitPricePaise     Int   @map("unit_price_paise")
+  quantity           Int   @default(1)
+  totalPricePaise    Int   @map("total_price_paise")
+  discountPaise      Int   @default(0) @map("discount_paise")
+  taxableAmountPaise Int   @default(0) @map("taxable_amount_paise")
+  gstRatePct         Float @default(18) @map("gst_rate_pct")
+  cgstPaise          Int   @default(0) @map("cgst_paise")
+  sgstPaise          Int   @default(0) @map("sgst_paise")
+  igstPaise          Int   @default(0) @map("igst_paise")
+  totalTaxPaise      Int   @default(0) @map("total_tax_paise")
+  netTotalPaise      Int   @map("net_total_paise")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
   @@index([orderId])
   @@index([productId])
   @@index([variantId])
@@ -605,31 +609,29 @@ model OrderItem {
 }
 
 model Payment {
-  id                  String         @id @default(cuid())
-  orderId             String         @map("order_id")
-  order               Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  
-  provider            String         // "RAZORPAY" | "COD"
-  providerPaymentId   String?        @unique @map("provider_payment_id")
-  providerOrderId     String?        @map("provider_order_id")
-  providerSignature   String?        @map("provider_signature")
-  
-  amountPaise         Int            @map("amount_paise")
-  currency            String         @default("INR")
-  status              PaymentStatus  @default(PENDING)
-  metadata            Json?
-  
-  createdAt           DateTime       @default(now()) @map("created_at")
-  updatedAt           DateTime       @updatedAt @map("updated_at")
-  refunds             Refund[]
+  id      String @id @default(cuid())
+  orderId String @map("order_id")
+  order   Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
 
-  
+  provider          String // "RAZORPAY" | "COD"
+  providerPaymentId String? @unique @map("provider_payment_id")
+  providerOrderId   String? @map("provider_order_id")
+  providerSignature String? @map("provider_signature")
+
+  amountPaise Int           @map("amount_paise")
+  currency    String        @default("INR")
+  status      PaymentStatus @default(PENDING)
+  metadata    Json?
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  refunds   Refund[]
+
   @@index([orderId])
   @@index([providerPaymentId])
   @@index([status])
   @@map("payments")
 }
-
 
 enum RefundStatus {
   INITIATED
@@ -638,25 +640,69 @@ enum RefundStatus {
 }
 
 model Refund {
-  id                  String       @id @default(cuid())
-  orderId             String       @map("order_id")
-  order               Order        @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  
-  paymentId           String       @map("payment_id")
-  payment             Payment      @relation(fields: [paymentId], references: [id], onDelete: Cascade)
-  
-  providerRefundId    String?      @unique @map("provider_refund_id")
-  amountPaise         Int          @map("amount_paise")
-  status              RefundStatus @default(INITIATED)
-  
-  initiatedByUserId   String?      @map("initiated_by_user_id")
-  
-  createdAt           DateTime     @default(now()) @map("created_at")
-  updatedAt           DateTime     @updatedAt @map("updated_at")
-  
+  id      String @id @default(cuid())
+  orderId String @map("order_id")
+  order   Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  paymentId String  @map("payment_id")
+  payment   Payment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+
+  providerRefundId String?      @unique @map("provider_refund_id")
+  amountPaise      Int          @map("amount_paise")
+  status           RefundStatus @default(INITIATED)
+
+  initiatedByUserId String? @map("initiated_by_user_id")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
   @@index([orderId])
   @@index([paymentId])
   @@index([providerRefundId])
   @@index([status])
   @@map("refunds")
+}
+
+model Wishlist {
+  id         String   @id @default(cuid())
+  customerId String   @map("customer_id")
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  productId String  @map("product_id")
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@unique([customerId, productId])
+  @@index([customerId])
+  @@index([productId])
+  @@map("wishlists")
+}
+
+enum ReviewStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model Review {
+  id      String       @id @default(cuid())
+  rating  Int          @db.SmallInt
+  content String?      @db.Text
+  status  ReviewStatus @default(PENDING)
+
+  customerId String   @map("customer_id")
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  productId String  @map("product_id")
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@unique([customerId, productId])
+  @@index([customerId])
+  @@index([productId])
+  @@index([status])
+  @@map("reviews")
 }
