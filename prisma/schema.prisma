@@ -534,6 +534,8 @@ model Order {
   @@index([orderNumber])
   @@index([customerId])
   @@index([customerEmail])
+  @@index([customerName])
+  @@index([paymentMethod])
   @@index([paymentStatus])
   @@index([fulfillmentStatus])
   @@index([createdAt])
