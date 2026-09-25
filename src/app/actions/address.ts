@@ -41,6 +41,7 @@ export async function createAddressAction(
     const customerId = owner.type === "CUSTOMER" ? owner.customerId : null;
     const address = await createAddress(data, customerId);
     revalidatePath("/checkout");
+    revalidatePath("/account");
     return { success: true, address };
   } catch (error) {
     return { success: false, error: (error as Error).message };
@@ -59,6 +60,7 @@ export async function updateAddressAction(
     }
     const address = await updateAddress(id, data, owner.customerId);
     revalidatePath("/checkout");
+    revalidatePath("/account");
     return { success: true, address };
   } catch (error) {
     return { success: false, error: (error as Error).message };
@@ -76,6 +78,7 @@ export async function deleteAddressAction(
     }
     await deleteAddress(id, owner.customerId);
     revalidatePath("/checkout");
+    revalidatePath("/account");
     return { success: true };
   } catch (error) {
     return { success: false, error: (error as Error).message };
@@ -93,6 +96,7 @@ export async function setDefaultShippingAction(
     }
     const address = await setDefaultShippingAddress(id, owner.customerId);
     revalidatePath("/checkout");
+    revalidatePath("/account");
     return { success: true, address };
   } catch (error) {
     return { success: false, error: (error as Error).message };

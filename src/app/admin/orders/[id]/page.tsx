@@ -9,6 +9,7 @@ import { Separator } from "@/components/ui/separator";
 import { FileText, ChevronLeft } from "lucide-react";
 import { FulfillmentActions } from "./fulfillment-actions";
 import { RefundActions } from "./refund-actions";
+import { ReturnActions } from "./return-actions";
 
 export const metadata = {
   title: "Order Detail | Admin",
@@ -221,6 +222,8 @@ export default async function AdminOrderDetailPage({
               </div>
             </div>
           </div>
+          
+          <ReturnActions order={order} />
         </div>
 
         {/* Sidebar */}

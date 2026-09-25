@@ -29,7 +29,6 @@ export const FULFILLMENT_STATUS_TRANSITIONS: Record<FulfillmentStatus, Fulfillme
 };
 
 export const TERMINAL_FULFILLMENT_STATUSES: FulfillmentStatus[] = [
-  FulfillmentStatus.DELIVERED,
   FulfillmentStatus.CANCELLED,
   FulfillmentStatus.RETURNED,
 ];
