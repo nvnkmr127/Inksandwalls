@@ -11,6 +11,7 @@ import { CatalogPagination } from "@/components/storefront/catalog-pagination";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { Button } from "@/components/ui/button";
 import { SearchX } from "lucide-react";
+import { JsonLd, buildBreadcrumbSchema } from "@/lib/seo/schema";
 
 interface ProductsPageProps {
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
@@ -106,8 +107,27 @@ export default async function ProductsPage({ searchParams }: ProductsPageProps) 
     headingDescription = `Found ${result.totalCount} product${result.totalCount === 1 ? "" : "s"} matching your search.`;
   }
 
+  const breadcrumbItems = [
+    { name: "Home", url: siteConfig.url },
+    { name: "Catalogue", url: `${siteConfig.url}/products` },
+  ];
+  if (result.activeCategory) {
+    breadcrumbItems.push({
+      name: result.activeCategory.name,
+      url: `${siteConfig.url}/products?category=${result.activeCategory.slug}`,
+    });
+  } else if (result.activeCollection) {
+    breadcrumbItems.push({
+      name: result.activeCollection.name,
+      url: `${siteConfig.url}/products?collection=${result.activeCollection.slug}`,
+    });
+  }
+  const breadcrumbSchema = buildBreadcrumbSchema(breadcrumbItems);
+
   return (
-    <div className="container max-w-7xl px-4 py-8 sm:px-6 lg:px-8 space-y-8">
+    <>
+      <JsonLd schema={breadcrumbSchema} />
+      <div className="container max-w-7xl px-4 py-8 sm:px-6 lg:px-8 space-y-8">
       {/* Page Header */}
       <header className="flex flex-col gap-2">
         <div className="flex flex-wrap items-baseline justify-between gap-4">
@@ -177,5 +197,6 @@ export default async function ProductsPage({ searchParams }: ProductsPageProps) 
         />
       )}
     </div>
+    </>
   );
 }

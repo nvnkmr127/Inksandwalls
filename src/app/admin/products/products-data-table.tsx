@@ -30,6 +30,7 @@ export interface ProductItem {
   hsnCode?: string | null;
   categoryId: string;
   category: ProductCategorySummary;
+  seo?: Record<string, string | null> | null;
   createdAt: string;
   updatedAt: string;
 }

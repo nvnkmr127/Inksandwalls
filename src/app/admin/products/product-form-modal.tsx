@@ -60,6 +60,13 @@ export function ProductFormModal({
   const [minAreaSqft, setMinAreaSqft] = React.useState("");
   const [rollWidthFt, setRollWidthFt] = React.useState("");
 
+  // SEO fields
+  const [seoData, setSeoData] = React.useState<Record<string, string>>({
+    title: "", description: "", canonicalUrl: "", metaRobots: "",
+    ogTitle: "", ogDescription: "", ogImage: "",
+    twitterTitle: "", twitterDescription: "", twitterImage: "", h1: ""
+  });
+
   const [isSlugManuallyEdited, setIsSlugManuallyEdited] = React.useState(false);
   const [errors, setErrors] = React.useState<Record<string, string>>({});
 
@@ -110,6 +117,16 @@ export function ProductFormModal({
         setMinAreaSqft(product.minArea != null ? String(product.minArea) : "");
         setRollWidthFt(product.rollWidth != null ? String(product.rollWidth) : "");
 
+        const pSeo = product.seo || {};
+        setSeoData({
+          title: pSeo.title || "", description: pSeo.description || "",
+          canonicalUrl: pSeo.canonicalUrl || "", metaRobots: pSeo.metaRobots || "",
+          ogTitle: pSeo.ogTitle || "", ogDescription: pSeo.ogDescription || "",
+          ogImage: pSeo.ogImage || "", twitterTitle: pSeo.twitterTitle || "",
+          twitterDescription: pSeo.twitterDescription || "", twitterImage: pSeo.twitterImage || "",
+          h1: pSeo.h1 || ""
+        });
+
         setIsSlugManuallyEdited(true);
       } else {
         setName("");
@@ -126,6 +143,12 @@ export function ProductFormModal({
         setWastagePct("0");
         setMinAreaSqft("");
         setRollWidthFt("");
+
+        setSeoData({
+          title: "", description: "", canonicalUrl: "", metaRobots: "",
+          ogTitle: "", ogDescription: "", ogImage: "",
+          twitterTitle: "", twitterDescription: "", twitterImage: "", h1: ""
+        });
 
         setIsSlugManuallyEdited(false);
       }
@@ -199,6 +222,7 @@ export function ProductFormModal({
         isActive,
         returnable,
         hsnCode: hsnCode.trim() || undefined,
+        seo: Object.fromEntries(Object.entries(seoData).map(([k, v]) => [k, v.trim() || null])),
       };
 
       if (productType === "FIXED") {
@@ -515,6 +539,113 @@ export function ProductFormModal({
                   disabled={isSubmitting}
                 />
               </FormField>
+            </div>
+          </div>
+
+          {/* Section: SEO Metadata */}
+          <div className="space-y-4">
+            <h3 className="text-sm font-semibold border-b pb-1 text-foreground">SEO Metadata</h3>
+            
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <FormField label="Meta Title" description="Overrides default title tag">
+                <Input
+                  placeholder="Custom SEO Title"
+                  value={seoData.title}
+                  onChange={(e) => setSeoData(s => ({ ...s, title: e.target.value }))}
+                  disabled={isSubmitting}
+                />
+              </FormField>
+              <FormField label="Meta Description" description="Max 160 characters recommended">
+                <Input
+                  placeholder="Custom Meta Description"
+                  value={seoData.description}
+                  onChange={(e) => setSeoData(s => ({ ...s, description: e.target.value }))}
+                  disabled={isSubmitting}
+                />
+              </FormField>
+            </div>
+            
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <FormField label="Canonical URL" description="Leave empty to use default product URL">
+                <Input
+                  placeholder="https://example.com/product/abc"
+                  value={seoData.canonicalUrl}
+                  onChange={(e) => setSeoData(s => ({ ...s, canonicalUrl: e.target.value }))}
+                  disabled={isSubmitting}
+                />
+              </FormField>
+              <FormField label="H1 Tag Override" description="Overrides the default H1 heading on the page">
+                <Input
+                  placeholder="Custom H1 text"
+                  value={seoData.h1}
+                  onChange={(e) => setSeoData(s => ({ ...s, h1: e.target.value }))}
+                  disabled={isSubmitting}
+                />
+              </FormField>
+              <FormField label="Meta Robots">
+                <Input
+                  placeholder="e.g. index, follow"
+                  value={seoData.metaRobots}
+                  onChange={(e) => setSeoData(s => ({ ...s, metaRobots: e.target.value }))}
+                  disabled={isSubmitting}
+                />
+              </FormField>
+            </div>
+
+            <div className="p-4 rounded-md border bg-muted/20 space-y-4">
+              <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Social Graph (Open Graph / Twitter)</h4>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <FormField label="OG Title">
+                  <Input
+                    placeholder="OG Title"
+                    value={seoData.ogTitle}
+                    onChange={(e) => setSeoData(s => ({ ...s, ogTitle: e.target.value }))}
+                    disabled={isSubmitting}
+                  />
+                </FormField>
+                <FormField label="OG Description">
+                  <Input
+                    placeholder="OG Description"
+                    value={seoData.ogDescription}
+                    onChange={(e) => setSeoData(s => ({ ...s, ogDescription: e.target.value }))}
+                    disabled={isSubmitting}
+                  />
+                </FormField>
+                <FormField label="OG Image URL">
+                  <Input
+                    placeholder="https://..."
+                    value={seoData.ogImage}
+                    onChange={(e) => setSeoData(s => ({ ...s, ogImage: e.target.value }))}
+                    disabled={isSubmitting}
+                  />
+                </FormField>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
+                <FormField label="Twitter Title">
+                  <Input
+                    placeholder="Twitter Title"
+                    value={seoData.twitterTitle}
+                    onChange={(e) => setSeoData(s => ({ ...s, twitterTitle: e.target.value }))}
+                    disabled={isSubmitting}
+                  />
+                </FormField>
+                <FormField label="Twitter Description">
+                  <Input
+                    placeholder="Twitter Description"
+                    value={seoData.twitterDescription}
+                    onChange={(e) => setSeoData(s => ({ ...s, twitterDescription: e.target.value }))}
+                    disabled={isSubmitting}
+                  />
+                </FormField>
+                <FormField label="Twitter Image URL">
+                  <Input
+                    placeholder="https://..."
+                    value={seoData.twitterImage}
+                    onChange={(e) => setSeoData(s => ({ ...s, twitterImage: e.target.value }))}
+                    disabled={isSubmitting}
+                  />
+                </FormField>
+              </div>
             </div>
           </div>
 

@@ -24,6 +24,7 @@ export interface CategoryData {
   description?: string | null;
   isActive: boolean;
   sortOrder: number;
+  seo?: Record<string, string | null> | null;
 }
 
 interface CategoryFormModalProps {
@@ -47,6 +48,12 @@ export function CategoryFormModal({
   const [description, setDescription] = React.useState("");
   const [isActive, setIsActive] = React.useState(true);
   const [sortOrder, setSortOrder] = React.useState(0);
+
+  // SEO fields
+  const [seoData, setSeoData] = React.useState<Record<string, string>>({
+    title: "", description: "", canonicalUrl: "", h1: "", introContent: ""
+  });
+
   const [isSlugManuallyEdited, setIsSlugManuallyEdited] = React.useState(false);
   const [errors, setErrors] = React.useState<Record<string, string>>({});
 
@@ -63,6 +70,13 @@ export function CategoryFormModal({
         setDescription(category.description || "");
         setIsActive(category.isActive ?? true);
         setSortOrder(category.sortOrder ?? 0);
+        
+        const cSeo = category.seo || {};
+        setSeoData({
+          title: cSeo.title || "", description: cSeo.description || "",
+          canonicalUrl: cSeo.canonicalUrl || "", h1: cSeo.h1 || "", introContent: cSeo.introContent || ""
+        });
+        
         setIsSlugManuallyEdited(true);
       } else {
         setName("");
@@ -70,6 +84,11 @@ export function CategoryFormModal({
         setDescription("");
         setIsActive(true);
         setSortOrder(0);
+
+        setSeoData({
+          title: "", description: "", canonicalUrl: "", h1: "", introContent: ""
+        });
+
         setIsSlugManuallyEdited(false);
       }
       setErrors({});
@@ -117,6 +136,7 @@ export function CategoryFormModal({
         description: description.trim() || undefined,
         isActive,
         sortOrder: Number(sortOrder) || 0,
+        seo: Object.fromEntries(Object.entries(seoData).map(([k, v]) => [k, v.trim() || null])),
       };
 
       const url = isEditing
@@ -228,6 +248,59 @@ export function CategoryFormModal({
                 </span>
               </div>
             </div>
+          </div>
+
+          {/* Section: SEO Metadata */}
+          <div className="space-y-4 pt-4 border-t">
+            <h3 className="text-sm font-semibold pb-1 text-foreground">SEO Metadata</h3>
+            
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <FormField label="Meta Title" description="Overrides default title tag">
+                <Input
+                  placeholder="Custom SEO Title"
+                  value={seoData.title}
+                  onChange={(e) => setSeoData(s => ({ ...s, title: e.target.value }))}
+                  disabled={isSubmitting}
+                />
+              </FormField>
+              <FormField label="Meta Description" description="Max 160 characters recommended">
+                <Input
+                  placeholder="Custom Meta Description"
+                  value={seoData.description}
+                  onChange={(e) => setSeoData(s => ({ ...s, description: e.target.value }))}
+                  disabled={isSubmitting}
+                />
+              </FormField>
+            </div>
+            
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <FormField label="Canonical URL" description="Leave empty to use default category URL">
+                <Input
+                  placeholder="https://example.com/category/abc"
+                  value={seoData.canonicalUrl}
+                  onChange={(e) => setSeoData(s => ({ ...s, canonicalUrl: e.target.value }))}
+                  disabled={isSubmitting}
+                />
+              </FormField>
+              <FormField label="H1 Tag Override" description="Overrides the default H1 heading">
+                <Input
+                  placeholder="Custom H1 text"
+                  value={seoData.h1}
+                  onChange={(e) => setSeoData(s => ({ ...s, h1: e.target.value }))}
+                  disabled={isSubmitting}
+                />
+              </FormField>
+            </div>
+
+            <FormField label="Intro Content" description="Rich text or long description for the top of the category page">
+              <Textarea
+                placeholder="Detailed SEO description..."
+                rows={3}
+                value={seoData.introContent}
+                onChange={(e) => setSeoData(s => ({ ...s, introContent: e.target.value }))}
+                disabled={isSubmitting}
+              />
+            </FormField>
           </div>
 
           <DialogFooter className="pt-4">

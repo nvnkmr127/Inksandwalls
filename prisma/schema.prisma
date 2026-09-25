@@ -125,6 +125,7 @@ model Category {
   updatedAt   DateTime @updatedAt @map("updated_at")
 
   products Product[]
+  seo      CategorySeo?
 
   @@index([slug])
   @@index([isActive])
@@ -171,6 +172,7 @@ model Product {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   reviews Review[]
+  seo     ProductSeo?
 
   @@index([slug])
   @@index([categoryId])
@@ -768,3 +770,47 @@ model Page {
   @@map("pages")
 }
 
+model ProductSeo {
+  id                 String   @id @default(cuid())
+  productId          String   @unique @map("product_id")
+  product            Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  
+  title              String?
+  description        String?  @db.Text
+  canonicalUrl       String?  @map("canonical_url")
+  metaRobots         String?  @map("meta_robots")
+  
+  ogTitle            String?  @map("og_title")
+  ogDescription      String?  @map("og_description") @db.Text
+  ogImage            String?  @map("og_image")
+  
+  twitterTitle       String?  @map("twitter_title")
+  twitterDescription String?  @map("twitter_description") @db.Text
+  twitterImage       String?  @map("twitter_image")
+  
+  h1                 String?
+  
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  @@index([productId])
+  @@map("product_seo")
+}
+
+model CategorySeo {
+  id               String   @id @default(cuid())
+  categoryId       String   @unique @map("category_id")
+  category         Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  
+  title            String?
+  description      String?  @db.Text
+  canonicalUrl     String?  @map("canonical_url")
+  h1               String?
+  introContent     String?  @map("intro_content") @db.Text
+  
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  @@index([categoryId])
+  @@map("category_seo")
+}

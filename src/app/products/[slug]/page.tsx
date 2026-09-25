@@ -9,6 +9,7 @@ import { ProductConfigurator } from "@/components/storefront/product-configurato
 import { ProductReviews } from "@/components/storefront/product-reviews";
 import { WhatsAppButton } from "@/components/enquiry/whatsapp-button";
 import { ChevronRight, ShieldCheck, Truck, Star } from "lucide-react";
+import { JsonLd, buildProductSchema, buildBreadcrumbSchema } from "@/lib/seo/schema";
 
 interface ProductPageProps {
   params: Promise<{ slug: string }>;
@@ -63,8 +64,48 @@ export default async function ProductDetailPage({ params }: ProductPageProps) {
   const isPerArea = product.productType === "PER_AREA";
   const pricing = formatProductPriceDisplay(product);
 
+  const productUrl = `${siteConfig.url}/products/${product.slug}`;
+  const breadcrumbItems = [
+    { name: "Home", url: siteConfig.url },
+    { name: "Catalogue", url: `${siteConfig.url}/products` },
+  ];
+  if (product.category) {
+    breadcrumbItems.push({
+      name: product.category.name,
+      url: `${siteConfig.url}/products?category=${product.category.slug}`,
+    });
+  }
+  breadcrumbItems.push({ name: product.name, url: productUrl });
+
+  const productSchema = buildProductSchema({
+    name: product.name,
+    description: product.description,
+    url: productUrl,
+    image: product.media?.[0]?.objectKey
+      ? `${siteConfig.url}/api/media/upload?key=${encodeURIComponent(product.media[0].objectKey)}`
+      : undefined,
+    sku: product.variants?.[0]?.sku || undefined,
+    productType: product.productType,
+    price: product.price,
+    rate: product.rate,
+    currency: "INR",
+    availability: "InStock",
+    reviews: product.reviews
+      .map((r) => ({
+        rating: r.rating,
+        content: r.content,
+        authorName: r.customer?.user?.name || "Customer",
+        datePublished: r.createdAt.toISOString(),
+      })),
+  });
+
+  const breadcrumbSchema = buildBreadcrumbSchema(breadcrumbItems);
+
   return (
-    <div className="container max-w-7xl px-4 py-8 sm:px-6 lg:px-8 space-y-12">
+    <>
+      <JsonLd schema={productSchema} />
+      <JsonLd schema={breadcrumbSchema} />
+      <div className="container max-w-7xl px-4 py-8 sm:px-6 lg:px-8 space-y-12">
       {/* Breadcrumb Navigation */}
       <nav aria-label="Breadcrumbs" className="flex items-center gap-1.5 text-xs text-muted-foreground">
         <Link href="/" className="hover:text-foreground transition-colors">
@@ -287,5 +328,6 @@ export default async function ProductDetailPage({ params }: ProductPageProps) {
         <ProductReviews reviews={product.reviews} summary={product.reviewSummary} />
       </section>
     </div>
+    </>
   );
 }

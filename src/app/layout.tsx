@@ -5,6 +5,7 @@ import { Header } from "@/components/layout/Header"
 import { Footer } from "@/components/layout/Footer"
 import { Providers } from "@/components/providers"
 import { getStorefrontNavData } from "@/lib/storefront/catalog-service"
+import { JsonLd, buildOrganizationSchema, buildLocalBusinessSchema } from "@/lib/seo/schema"
 import "./globals.css"
 
 const inter = Inter({
@@ -46,6 +47,9 @@ export const metadata: Metadata = {
       "max-snippet": -1,
     },
   },
+  verification: {
+    google: siteConfig.googleSiteVerification,
+  },
 }
 
 export const viewport: Viewport = {
@@ -60,9 +64,15 @@ export default async function RootLayout({
   children: React.ReactNode
 }) {
   const { categories, collections } = await getStorefrontNavData();
+  const orgSchema = buildOrganizationSchema();
+  const localSchema = buildLocalBusinessSchema();
 
   return (
     <html lang="en" className={`${inter.variable} h-full scroll-smooth`}>
+      <head>
+        <JsonLd schema={orgSchema} />
+        <JsonLd schema={localSchema} />
+      </head>
       <body className="min-h-screen flex flex-col bg-background text-foreground antialiased font-sans">
         <Providers>
           <Header categories={categories} collections={collections} />

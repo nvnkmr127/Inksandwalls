@@ -1,6 +1,14 @@
 import { ValidationError } from "@/lib/errors";
 import { normalizeSlug } from "./slug";
 
+export interface CategorySeoInput {
+  title?: string | null;
+  description?: string | null;
+  canonicalUrl?: string | null;
+  h1?: string | null;
+  introContent?: string | null;
+}
+
 
 export interface CategoryInput {
   name: string;
@@ -8,6 +16,7 @@ export interface CategoryInput {
   description?: string | null;
   isActive?: boolean;
   sortOrder?: number;
+  seo?: CategorySeoInput | null;
 }
 
 export interface ValidatedCategoryData {
@@ -16,6 +25,7 @@ export interface ValidatedCategoryData {
   description: string | null;
   isActive: boolean;
   sortOrder: number;
+  seo?: CategorySeoInput | null;
 }
 
 /**
@@ -98,11 +108,32 @@ export function validateCategoryInput(input: unknown): ValidatedCategoryData {
     sortOrder = data.sortOrder;
   }
 
+  // 6. SEO validation
+  let seo: CategorySeoInput | null = null;
+  if (data.seo && typeof data.seo === "object") {
+    const rawSeo = data.seo as Record<string, unknown>;
+    seo = {};
+    const stringFields = [
+      "title", "description", "canonicalUrl", "h1", "introContent"
+    ];
+    for (const field of stringFields) {
+      if (typeof rawSeo[field] === "string" && (rawSeo[field] as string).trim()) {
+        seo[field as keyof CategorySeoInput] = (rawSeo[field] as string).trim();
+      } else {
+        seo[field as keyof CategorySeoInput] = null;
+      }
+    }
+    if (seo.canonicalUrl && !seo.canonicalUrl.startsWith("http") && !seo.canonicalUrl.startsWith("/")) {
+      throw new ValidationError("Canonical URL must be a valid absolute or relative URL.");
+    }
+  }
+
   return {
     name,
     slug,
     description,
     isActive,
     sortOrder,
+    seo,
   };
 }

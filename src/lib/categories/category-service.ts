@@ -46,8 +46,12 @@ export async function createCategory(
   }
 
   return await prisma.$transaction(async (tx) => {
+    const { seo, ...categoryData } = validated;
     const category = await tx.category.create({
-      data: validated,
+      data: {
+        ...categoryData,
+        seo: seo ? { create: seo } : undefined,
+      },
     });
 
     await recordAuditEvent(
@@ -83,6 +87,7 @@ export async function updateCategory(
 ) {
   const existing = await prisma.category.findUnique({
     where: { id },
+    include: { seo: true },
   });
 
   if (!existing) {
@@ -116,9 +121,18 @@ export async function updateCategory(
   }
 
   return await prisma.$transaction(async (tx) => {
+    const { seo, ...categoryData } = validated;
     const updated = await tx.category.update({
       where: { id },
-      data: validated,
+      data: {
+        ...categoryData,
+        seo: seo ? {
+          upsert: {
+            create: seo,
+            update: seo,
+          },
+        } : existing.seo ? { delete: true } : undefined,
+      },
     });
 
     await recordAuditEvent(
@@ -198,6 +212,7 @@ export async function deleteCategory(
 export async function getCategoryById(id: string) {
   const category = await prisma.category.findUnique({
     where: { id },
+    include: { seo: true },
   });
 
   if (!category) {

@@ -57,8 +57,13 @@ export async function createProduct(
   }
 
   return await prisma.$transaction(async (tx) => {
+    const { seo, ...productData } = validated;
+
     const product = await tx.product.create({
-      data: validated,
+      data: {
+        ...productData,
+        seo: seo ? { create: seo } : undefined,
+      },
       include: {
         category: {
           select: { id: true, name: true, slug: true },
@@ -102,6 +107,7 @@ export async function updateProduct(
 ) {
   const existing = await prisma.product.findUnique({
     where: { id },
+    include: { seo: true },
   });
 
   if (!existing) {
@@ -146,9 +152,19 @@ export async function updateProduct(
   }
 
   return await prisma.$transaction(async (tx) => {
+    const { seo, ...productData } = validated;
+
     const updated = await tx.product.update({
       where: { id },
-      data: validated,
+      data: {
+        ...productData,
+        seo: seo ? {
+          upsert: {
+            create: seo,
+            update: seo,
+          },
+        } : existing.seo ? { delete: true } : undefined,
+      },
       include: {
         category: {
           select: { id: true, name: true, slug: true },
@@ -242,6 +258,7 @@ export async function getProductById(id: string) {
       category: {
         select: { id: true, name: true, slug: true },
       },
+      seo: true,
     },
   });
 

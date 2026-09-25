@@ -14,6 +14,7 @@ export interface CategoryItem {
   description?: string | null;
   isActive: boolean;
   sortOrder: number;
+  seo?: Record<string, string | null> | null;
   createdAt: string;
   updatedAt: string;
 }

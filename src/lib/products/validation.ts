@@ -2,6 +2,20 @@ import { ProductType } from "@prisma/client";
 import { ValidationError } from "@/lib/errors";
 import { generateSlug, validateSlug } from "./slug";
 
+export interface ProductSeoInput {
+  title?: string | null;
+  description?: string | null;
+  canonicalUrl?: string | null;
+  metaRobots?: string | null;
+  ogTitle?: string | null;
+  ogDescription?: string | null;
+  ogImage?: string | null;
+  twitterTitle?: string | null;
+  twitterDescription?: string | null;
+  twitterImage?: string | null;
+  h1?: string | null;
+}
+
 export interface CreateProductInput {
   name: string;
   slug?: string;
@@ -16,6 +30,7 @@ export interface CreateProductInput {
   returnable?: boolean;
   hsnCode?: string | null;
   categoryId: string;
+  seo?: ProductSeoInput | null;
 }
 
 export interface ValidatedProductInput {
@@ -32,6 +47,7 @@ export interface ValidatedProductInput {
   returnable: boolean;
   hsnCode: string | null;
   categoryId: string;
+  seo?: ProductSeoInput | null;
 }
 
 /**
@@ -195,6 +211,29 @@ export function validateProductInput(input: unknown): ValidatedProductInput {
     }
   }
 
+  // 9. SEO fields validation
+  let seo: ProductSeoInput | null = null;
+  if (raw.seo && typeof raw.seo === "object") {
+    const rawSeo = raw.seo as Record<string, unknown>;
+    seo = {};
+    const stringFields = [
+      "title", "description", "canonicalUrl", "metaRobots",
+      "ogTitle", "ogDescription", "ogImage",
+      "twitterTitle", "twitterDescription", "twitterImage", "h1"
+    ];
+    for (const field of stringFields) {
+      if (typeof rawSeo[field] === "string" && (rawSeo[field] as string).trim()) {
+        seo[field as keyof ProductSeoInput] = (rawSeo[field] as string).trim();
+      } else {
+        seo[field as keyof ProductSeoInput] = null;
+      }
+    }
+
+    if (seo.canonicalUrl && !seo.canonicalUrl.startsWith("http") && !seo.canonicalUrl.startsWith("/")) {
+      throw new ValidationError("Canonical URL must be a valid absolute or relative URL.");
+    }
+  }
+
   return {
     name,
     slug,
@@ -209,5 +248,6 @@ export function validateProductInput(input: unknown): ValidatedProductInput {
     returnable,
     hsnCode,
     categoryId,
+    seo,
   };
 }
