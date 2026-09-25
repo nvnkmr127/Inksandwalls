@@ -6,6 +6,7 @@ import { Order, OrderItem, Payment } from "@prisma/client";
 export type AdminOrderDetail = Order & {
   items: OrderItem[];
   payments: Payment[];
+  refunds: any[]; // Or Refund[] if exported from prisma client properly
   customer: {
     id: string;
     userId: string | null;
@@ -21,6 +22,7 @@ export async function getAdminOrderDetail(orderId: string): Promise<AdminOrderDe
     include: {
       items: true,
       payments: true,
+      refunds: true,
       customer: {
         select: { id: true, userId: true },
       },

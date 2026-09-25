@@ -170,3 +170,63 @@ export function generateTestRazorpaySignature(
     .update(`${razorpayOrderId}|${razorpayPaymentId}`)
     .digest("hex");
 }
+
+/**
+ * Issues a refund for a specific Razorpay payment.
+ */
+export async function issueRazorpayRefund(
+  paymentId: string,
+  amountPaise: number,
+  notes?: Record<string, string>
+): Promise<{ id: string; status: string } | null> {
+  const config = getRazorpayConfig();
+
+  if (
+    config.keyId &&
+    config.keySecret &&
+    !config.keyId.includes("placeholder") &&
+    !config.keySecret.includes("placeholder")
+  ) {
+    try {
+      const authHeader = `Basic ${Buffer.from(
+        `${config.keyId}:${config.keySecret}`
+      ).toString("base64")}`;
+
+      const res = await fetch(`https://api.razorpay.com/v1/payments/${paymentId}/refund`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: authHeader,
+        },
+        body: JSON.stringify({
+          amount: amountPaise,
+          notes: notes || {},
+        }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        return {
+          id: data.id,
+          status: data.status,
+        };
+      } else {
+        const errText = await res.text();
+        logger.error("Razorpay API refund failed", {
+          status: res.status,
+          response: errText,
+        });
+        throw new Error(`Refund failed: ${errText}`);
+      }
+    } catch (error) {
+      logger.error("Razorpay API network error during refund", {}, error as Error);
+      throw error;
+    }
+  }
+
+  // Safe mock refund for local dev / test
+  return {
+    id: `rfnd_mock_${Date.now().toString(36)}`,
+    status: "processed",
+  };
+}

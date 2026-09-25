@@ -6,7 +6,9 @@ import { formatPaiseToRupees } from "@/lib/money";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { ChevronLeft, Download, FileText } from "lucide-react";
+import { FileText, ChevronLeft } from "lucide-react";
+import { FulfillmentActions } from "./fulfillment-actions";
+import { RefundActions } from "./refund-actions";
 
 export const metadata = {
   title: "Order Detail | Admin",
@@ -130,6 +132,27 @@ export default async function AdminOrderDetailPage({
                 <span>Total</span>
                 <span>{formatPaiseToRupees(order.totalPaise)}</span>
               </div>
+
+              {order.refunds && order.refunds.length > 0 && (
+                <div className="mt-4 pt-4 border-t">
+                  <h4 className="font-semibold text-sm mb-2">Refunds</h4>
+                  <div className="space-y-2">
+                    {order.refunds.map((refund: any) => (
+                      <div key={refund.id} className="flex justify-between text-sm items-center">
+                        <div>
+                          <Badge variant={refund.status === "PROCESSED" ? "default" : "secondary"} className="mr-2 text-[10px] uppercase">
+                            {refund.status}
+                          </Badge>
+                          <span className="text-muted-foreground text-xs">
+                            {new Date(refund.createdAt).toLocaleDateString()}
+                          </span>
+                        </div>
+                        <span className="text-destructive font-medium">-₹{(refund.amountPaise / 100).toFixed(2)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 
@@ -157,6 +180,16 @@ export default async function AdminOrderDetailPage({
                     Txn: {order.razorpayPaymentId}
                   </p>
                 )}
+                
+                <RefundActions
+                  orderId={order.id}
+                  paymentMethod={order.paymentMethod}
+                  paymentStatus={order.paymentStatus}
+                  totalAmountPaise={order.totalPaise}
+                  alreadyRefundedPaise={(order.refunds || [])
+                    .filter((r: any) => r.status !== "FAILED")
+                    .reduce((sum: number, r: any) => sum + r.amountPaise, 0)}
+                />
               </div>
               <div>
                 <h3 className="text-sm font-medium text-muted-foreground mb-2">
@@ -207,11 +240,12 @@ export default async function AdminOrderDetailPage({
           {/* Fulfillment Status */}
           <div className="border rounded-lg bg-card p-6 shadow-sm">
             <h2 className="text-lg font-semibold mb-4">Fulfillment</h2>
-            <Badge variant="outline" className="mb-2">
-              {order.fulfillmentStatus}
-            </Badge>
+            <FulfillmentActions
+              orderId={order.id}
+              currentStatus={order.fulfillmentStatus}
+            />
             {order.courierName && (
-              <p className="text-sm mt-2 text-muted-foreground">
+              <p className="text-sm mt-4 text-muted-foreground">
                 Courier: {order.courierName}
               </p>
             )}

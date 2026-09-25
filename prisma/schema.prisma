@@ -527,6 +527,8 @@ model Order {
   
   items               OrderItem[]
   payments            Payment[]
+  refunds             Refund[]
+
   
   createdAt           DateTime          @default(now()) @map("created_at")
   updatedAt           DateTime          @updatedAt @map("updated_at")
@@ -619,6 +621,8 @@ model Payment {
   
   createdAt           DateTime       @default(now()) @map("created_at")
   updatedAt           DateTime       @updatedAt @map("updated_at")
+  refunds             Refund[]
+
   
   @@index([orderId])
   @@index([providerPaymentId])
@@ -627,3 +631,32 @@ model Payment {
 }
 
 
+enum RefundStatus {
+  INITIATED
+  PROCESSED
+  FAILED
+}
+
+model Refund {
+  id                  String       @id @default(cuid())
+  orderId             String       @map("order_id")
+  order               Order        @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  
+  paymentId           String       @map("payment_id")
+  payment             Payment      @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  
+  providerRefundId    String?      @unique @map("provider_refund_id")
+  amountPaise         Int          @map("amount_paise")
+  status              RefundStatus @default(INITIATED)
+  
+  initiatedByUserId   String?      @map("initiated_by_user_id")
+  
+  createdAt           DateTime     @default(now()) @map("created_at")
+  updatedAt           DateTime     @updatedAt @map("updated_at")
+  
+  @@index([orderId])
+  @@index([paymentId])
+  @@index([providerRefundId])
+  @@index([status])
+  @@map("refunds")
+}
