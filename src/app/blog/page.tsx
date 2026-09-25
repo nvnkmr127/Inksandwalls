@@ -5,6 +5,9 @@ import { siteConfig } from "@/config/site";
 export const metadata = {
   title: `Blog | ${siteConfig.name}`,
   description: "Read the latest articles and editorials about bespoke wallpapers, interior design, and styling tips.",
+  alternates: {
+    canonical: "/blog",
+  },
 };
 
 export default async function BlogListingPage({

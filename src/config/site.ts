@@ -1,6 +1,7 @@
 export const siteConfig = {
   name: "INKs & Walls",
   description: "Bespoke Wallpapers, Blinds & Custom Wall Art",
+  url: process.env.NEXT_PUBLIC_APP_URL || "https://inksandwalls.com",
   navLinks: [
     { label: "Home", href: "/" },
     { label: "Catalogue", href: "/products" },

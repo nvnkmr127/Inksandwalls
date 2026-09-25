@@ -1,8 +1,17 @@
+import { Metadata } from "next"
 import { siteConfig } from "@/config/site"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
+
+export const metadata: Metadata = {
+  title: siteConfig.name,
+  description: siteConfig.description,
+  alternates: {
+    canonical: "/",
+  },
+}
 
 export default function HomePage() {
   return (

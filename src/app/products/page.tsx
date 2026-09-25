@@ -21,23 +21,47 @@ export async function generateMetadata({
 }: ProductsPageProps): Promise<Metadata> {
   const params = await searchParams;
   const categoryParam = typeof params.category === "string" ? params.category : undefined;
+  const collectionParam = typeof params.collection === "string" ? params.collection : undefined;
   const searchParam = typeof params.search === "string" ? params.search : undefined;
 
+  const result = await getStorefrontProducts({
+    category: categoryParam,
+    collection: collectionParam,
+    search: searchParam,
+    pageSize: 1, // Only need metadata
+  });
+
   let title = "Product Catalogue";
-  if (categoryParam) {
-    const formatted = categoryParam
-      .replace(/-/g, " ")
-      .replace(/\b\w/g, (c) => c.toUpperCase());
-    title = `${formatted} | ${siteConfig.name}`;
+  let description = `Discover bespoke custom wallpapers, acoustic murals, and fine art prints from ${siteConfig.name}.`;
+  let canonical = "/products";
+
+  if (result.activeCategory) {
+    title = `${result.activeCategory.name} | ${siteConfig.name}`;
+    description = result.activeCategory.description || description;
+    canonical = `/products?category=${result.activeCategory.slug}`;
+  } else if (result.activeCollection) {
+    title = `${result.activeCollection.name} | ${siteConfig.name}`;
+    description = result.activeCollection.description || description;
+    canonical = `/products?collection=${result.activeCollection.slug}`;
   } else if (searchParam) {
     title = `Search: "${searchParam}" | ${siteConfig.name}`;
+    canonical = `/products?search=${encodeURIComponent(searchParam)}`;
   } else {
     title = `Wallpapers, Murals & Wall Art | ${siteConfig.name}`;
   }
 
   return {
     title,
-    description: `Discover bespoke custom wallpapers, acoustic murals, and fine art prints from ${siteConfig.name}.`,
+    description,
+    alternates: {
+      canonical,
+    },
+    openGraph: {
+      title,
+      description,
+      url: canonical,
+      siteName: siteConfig.name,
+    },
   };
 }
 

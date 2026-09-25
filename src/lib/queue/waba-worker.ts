@@ -3,6 +3,8 @@ import { connection } from "./redis";
 import { WABA_NOTIFICATION_QUEUE, WabaNotificationJobData } from "./waba-queue";
 import { getWhatsAppProvider } from "@/lib/whatsapp/watxio";
 import { logger } from "@/lib/logger";
+import * as Sentry from "@sentry/nextjs";
+import { UnrecoverableError } from "bullmq";
 
 const provider = getWhatsAppProvider();
 
@@ -39,8 +41,8 @@ async function processJob(job: Job<WabaNotificationJobData>) {
       templateName = "order_shipped";
       parameters = [
         orderNumber, 
-        metadata?.courierName || "Standard Shipping", 
-        metadata?.awb || "N/A"
+        (metadata?.courierName as string) || "Standard Shipping", 
+        (metadata?.awb as string) || "N/A"
       ];
       break;
     case "DELIVERED":
@@ -64,6 +66,14 @@ async function processJob(job: Job<WabaNotificationJobData>) {
   });
 
   if (!result.success) {
+    if (result.error?.toLowerCase().includes("configuration") || result.error?.toLowerCase().includes("invalid")) {
+      logger.error(`Permanent failure sending WABA template ${templateName}`, { 
+        component: "WabaWorker", 
+        metadata: { orderNumber, error: result.error, isFinal: true } 
+      });
+      throw new UnrecoverableError(`Permanent failure: ${result.error}`);
+    }
+    
     throw new Error(`Failed to send WABA template ${templateName}: ${result.error}`);
   }
 }
@@ -80,10 +90,26 @@ export const wabaWorker = process.env.NODE_ENV === "test"
 
 if (wabaWorker) {
   wabaWorker.on("completed", (job) => {
-    logger.info(`WABA notification job completed`, { component: "WabaWorker", metadata: { jobId: job.id } });
+    logger.info(`WABA notification job completed`, { component: "WabaWorker", metadata: { jobId: job.id, type: job.name } });
   });
 
   wabaWorker.on("failed", (job, err) => {
-    logger.error(`WABA notification job failed`, { component: "WabaWorker", metadata: { jobId: job?.id } }, err);
+    const isFinal = !job || job.attemptsMade >= job.opts.attempts!;
+    logger.error(`WABA notification job failed (Attempt ${job?.attemptsMade || 1})`, { 
+      component: "WabaWorker", 
+      metadata: { 
+        jobId: job?.id, 
+        type: job?.name,
+        isFinal,
+        errorMsg: err.message
+      } 
+    });
+    
+    if (isFinal) {
+      Sentry.captureException(err, {
+        tags: { type: "waba_notification", final_failure: true },
+        extra: { jobId: job?.id, payload: job?.data }
+      });
+    }
   });
 }

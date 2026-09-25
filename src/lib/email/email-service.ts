@@ -1,5 +1,6 @@
 import { Resend } from "resend";
 import { logger } from "@/lib/logger";
+import * as Sentry from "@sentry/nextjs";
 import {
   getOrderConfirmationTemplate,
   getShippingTemplate,
@@ -41,13 +42,29 @@ export async function sendTransactionalEmail(options: EmailOptions) {
     });
 
     if (error) {
-      logger.error("Resend API error", { component: "EmailService", error });
+      logger.error("Resend API error", { 
+        component: "EmailService", 
+        metadata: { 
+          subject: options.subject, 
+          error_message: error.message,
+          error_name: error.name
+        } 
+      });
+      Sentry.captureException(new Error(`Resend API Error: ${error.message}`), {
+        extra: { subject: options.subject, from: options.from, error }
+      });
       return { success: false, error };
     }
 
     return { success: true, data };
   } catch (error) {
-    logger.error("Failed to send transactional email", { component: "EmailService", error });
+    logger.error("Failed to send transactional email", { 
+      component: "EmailService",
+      metadata: { subject: options.subject } 
+    });
+    Sentry.captureException(error, {
+      extra: { subject: options.subject, from: options.from }
+    });
     return { success: false, error };
   }
 }
