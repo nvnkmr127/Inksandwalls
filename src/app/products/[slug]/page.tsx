@@ -7,6 +7,7 @@ import { formatProductPriceDisplay } from "@/lib/money";
 import { ProductGallery } from "@/components/storefront/product-gallery";
 import { ProductConfigurator } from "@/components/storefront/product-configurator";
 import { ProductReviews } from "@/components/storefront/product-reviews";
+import { WhatsAppButton } from "@/components/enquiry/whatsapp-button";
 import { ChevronRight, ShieldCheck, Truck, Star } from "lucide-react";
 
 interface ProductPageProps {
@@ -173,6 +174,14 @@ export default async function ProductDetailPage({ params }: ProductPageProps) {
               <Truck className="h-4 w-4 text-primary shrink-0" />
               <span>Free Insured Pan-India Shipping</span>
             </div>
+          </div>
+
+          <div className="pt-2">
+            <WhatsAppButton 
+              className="w-full bg-[#25D366] text-white hover:bg-[#1DA851] border-transparent" 
+              variant="outline"
+              message={`Hi, I would like to know more about the product: ${product.name} (${process.env.NEXT_PUBLIC_APP_URL || ''}/products/${product.slug})`}
+            />
           </div>
         </div>
       </div>

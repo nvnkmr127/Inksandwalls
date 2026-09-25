@@ -23,7 +23,6 @@ import { getCurrentUser, type CurrentUser } from "@/lib/auth/session";
 import {
   ValidationError,
   UnauthorizedError,
-  NotFoundError,
 } from "@/lib/errors";
 import { logger } from "@/lib/logger";
 import type {
@@ -31,7 +30,6 @@ import type {
   PlaceCodOrderInput,
   OrderPlacementResult,
   OrderSnapshot,
-  OrderItemSnapshot,
   AddressSnapshot,
 } from "./types";
 import { cookies } from "next/headers";
@@ -51,7 +49,6 @@ export async function placeRazorpayOrder(
 ): Promise<OrderPlacementResult> {
   const cookieStore = customStore || (await cookies());
   const currentUser = customUser !== undefined ? customUser : await getCurrentUser();
-  const owner = await resolveCartOwner(cookieStore, currentUser);
 
   // 1. Idempotency Check: Check if an order already exists for this Razorpay Payment ID
   const existingOrder = await prisma.order.findUnique({
@@ -513,6 +510,41 @@ async function executeOrderPlacementTransaction(
       orderNumber,
     }, invoiceErr as Error);
     // Note: Order remains safely persisted; invoice can be regenerated if needed.
+  }
+
+  try {
+    const { sendOrderConfirmationEmail } = await import("@/lib/email/email-service");
+    await sendOrderConfirmationEmail({
+      orderNumber: createdOrder.orderNumber,
+      customerName,
+      customerEmail: session.email,
+      createdAt: createdOrder.createdAt,
+      totalPaise: createdOrder.totalPaise,
+      invoiceUrl,
+      items: orderItemsData,
+    });
+  } catch (emailErr) {
+    logger.error("Failed to send order confirmation email", {
+      orderNumber,
+      component: "OrderService",
+    }, emailErr as Error);
+  }
+
+  try {
+    if (session.phone) {
+      const { queueWabaNotification } = await import("@/lib/queue/waba-queue");
+      await queueWabaNotification(`order_conf_${createdOrder.id}`, {
+        type: "ORDER_CONFIRMED",
+        orderId: createdOrder.id,
+        orderNumber: createdOrder.orderNumber,
+        phone: session.phone,
+      });
+    }
+  } catch (qErr) {
+    logger.error("Failed to queue WABA order confirmation", {
+      orderNumber,
+      component: "OrderService",
+    }, qErr as Error);
   }
 
   logger.info("Order successfully placed and committed", {

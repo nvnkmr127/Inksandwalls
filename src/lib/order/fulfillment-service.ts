@@ -15,7 +15,7 @@ export async function transitionOrderFulfillment(
   // Load the current order
   const order = await prisma.order.findUnique({
     where: { id: orderId },
-    select: { id: true, fulfillmentStatus: true },
+    select: { id: true, fulfillmentStatus: true, orderNumber: true, customerName: true, customerEmail: true, customerPhone: true },
   });
 
   if (!order) {
@@ -85,6 +85,72 @@ export async function transitionOrderFulfillment(
 
     return updated;
   });
+
+  try {
+    if (targetStatus === FulfillmentStatus.SHIPPED || targetStatus === FulfillmentStatus.DELIVERED) {
+      const { sendShippingEmail, sendDeliveryEmail } = await import("@/lib/email/email-service");
+      if (targetStatus === FulfillmentStatus.SHIPPED) {
+        await sendShippingEmail({
+          orderNumber: order.orderNumber,
+          customerName: order.customerName,
+          customerEmail: order.customerEmail,
+          courierName: updatedOrder.courierName,
+          awb: updatedOrder.awb,
+          trackingUrl: updatedOrder.trackingUrl,
+        });
+      } else if (targetStatus === FulfillmentStatus.DELIVERED) {
+        await sendDeliveryEmail({
+          orderNumber: order.orderNumber,
+          customerName: order.customerName,
+          customerEmail: order.customerEmail,
+        });
+      }
+    }
+  } catch (emailErr) {
+    console.error("Failed to send fulfillment email", emailErr);
+  }
+
+  try {
+    if (order.customerPhone) {
+      const { queueWabaNotification } = await import("@/lib/queue/waba-queue");
+      if (targetStatus === FulfillmentStatus.IN_PRODUCTION) {
+        await queueWabaNotification(`waba_inprod_${order.id}`, {
+          type: "IN_PRODUCTION",
+          orderId: order.id,
+          orderNumber: order.orderNumber,
+          phone: order.customerPhone,
+        });
+      } else if (targetStatus === FulfillmentStatus.SHIPPED) {
+        await queueWabaNotification(`waba_shipped_${order.id}`, {
+          type: "SHIPPED",
+          orderId: order.id,
+          orderNumber: order.orderNumber,
+          phone: order.customerPhone,
+          metadata: {
+            courierName: updatedOrder.courierName,
+            awb: updatedOrder.awb,
+          }
+        });
+      } else if (targetStatus === FulfillmentStatus.DELIVERED) {
+        await queueWabaNotification(`waba_delivered_${order.id}`, {
+          type: "DELIVERED",
+          orderId: order.id,
+          orderNumber: order.orderNumber,
+          phone: order.customerPhone,
+        });
+        
+        // Queue review request as well
+        await queueWabaNotification(`waba_review_${order.id}`, {
+          type: "REVIEW_REQUEST",
+          orderId: order.id,
+          orderNumber: order.orderNumber,
+          phone: order.customerPhone,
+        });
+      }
+    }
+  } catch (qErr) {
+    console.error("Failed to queue WABA fulfillment notification", qErr);
+  }
 
   return updatedOrder;
 }

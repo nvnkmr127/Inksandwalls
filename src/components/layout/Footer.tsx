@@ -79,18 +79,18 @@ export function Footer({ categories = [], collections = [] }: FooterProps) {
               </li>
               <li>
                 <Link
-                  href="/login"
+                  href="/shipping"
                   className="transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
                 >
-                  Sign In
+                  Shipping Policy
                 </Link>
               </li>
               <li>
                 <Link
-                  href="/cart"
+                  href="/returns"
                   className="transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
                 >
-                  Shopping Cart
+                  Returns Policy
                 </Link>
               </li>
             </ul>
@@ -99,9 +99,21 @@ export function Footer({ categories = [], collections = [] }: FooterProps) {
           {/* Contact & Hours */}
           <div className="space-y-4">
             <h4 className="text-sm font-semibold tracking-wider uppercase text-foreground">
-              Contact Us
+              Company
             </h4>
-            <div className="space-y-2 text-sm text-muted-foreground">
+            <ul className="space-y-2 text-sm">
+              <li>
+                <Link href="/about" className="transition-colors hover:text-foreground">
+                  About Us
+                </Link>
+              </li>
+              <li>
+                <Link href="/contact" className="transition-colors hover:text-foreground">
+                  Contact Us
+                </Link>
+              </li>
+            </ul>
+            <div className="space-y-2 text-sm text-muted-foreground mt-4">
               <p>Email: {siteConfig.contact.email}</p>
               <p>Hours: {siteConfig.contact.supportHours}</p>
             </div>
@@ -115,13 +127,13 @@ export function Footer({ categories = [], collections = [] }: FooterProps) {
           <p>© {new Date().getFullYear()} {siteConfig.name}. All rights reserved.</p>
           <div className="flex gap-6">
             <Link
-              href="/"
+              href="/terms"
               className="transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
             >
               Terms of Service
             </Link>
             <Link
-              href="/"
+              href="/privacy"
               className="transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
             >
               Privacy Policy

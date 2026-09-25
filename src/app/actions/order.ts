@@ -144,11 +144,11 @@ export async function reorderOrderAction(
         quantity: item.quantity,
         width: item.width || undefined,
         height: item.height || undefined,
-        unit: item.unit as "INCHES" | "FEET" | "CENTIMETERS" | "METERS" | undefined,
+        unit: item.unit as "inch" | "ft" | "cm" | "mm" | undefined,
         variantId: item.variantId,
         options: item.options ? (item.options as Record<string, unknown>) : undefined,
       });
-      lastCartId = cart.id;
+      lastCartId = cart.cartId;
     }
 
     return { success: true, cartId: lastCartId || undefined };

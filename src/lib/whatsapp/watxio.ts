@@ -1,8 +1,8 @@
 import "server-only";
-import { WhatsAppOtpProvider, SendOtpInput, SendOtpResult } from "./provider";
+import { WhatsAppProvider, SendOtpInput, SendOtpResult, SendTemplateInput, SendTemplateResult } from "./provider";
 import { logger } from "../logger";
 
-export class WatxioWhatsAppProvider implements WhatsAppOtpProvider {
+export class WatxioWhatsAppProvider implements WhatsAppProvider {
   private apiEndpoint: string;
   private apiKey: string;
   private phoneNumberId: string;
@@ -64,16 +64,85 @@ export class WatxioWhatsAppProvider implements WhatsAppOtpProvider {
       return { success: false, error: "WhatsApp provider communication failure" };
     }
   }
+
+  async sendTemplate({ phone, templateName, parameters }: SendTemplateInput): Promise<SendTemplateResult> {
+    if (!this.apiKey) {
+      logger.error("Watxio API Key missing in environment configuration", { component: "WhatsAppProvider" });
+      return { success: false, error: "Provider configuration error" };
+    }
+
+    try {
+      const response = await fetch(`${this.apiEndpoint}/messages`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${this.apiKey}`,
+        },
+        body: JSON.stringify({
+          messaging_product: "whatsapp",
+          recipient_type: "individual",
+          to: phone,
+          type: "template",
+          template: {
+            name: templateName,
+            language: { code: "en" },
+            components: parameters.length > 0 ? [
+              {
+                type: "body",
+                parameters: parameters.map(p => ({ type: "text", text: p }))
+              }
+            ] : []
+          },
+          phoneNumberId: this.phoneNumberId,
+        }),
+      });
+
+      if (!response.ok) {
+        const errText = await response.text();
+        logger.error(`Watxio template delivery failed with status ${response.status}`, {
+          component: "WhatsAppProvider",
+          metadata: { status: response.status, body: errText, templateName },
+        });
+        return { success: false, error: "Failed to dispatch WhatsApp template" };
+      }
+
+      const data = await response.json();
+      logger.info(`WhatsApp template dispatched: ${templateName}`, {
+        component: "WhatsAppProvider",
+        metadata: { provider: "Watxio", result: "success" },
+      });
+
+      return {
+        success: true,
+        providerMessageId: data.messages?.[0]?.id || data.id || "waba_msg_ok",
+      };
+    } catch (error) {
+      logger.error("Network error during Watxio template dispatch", { component: "WhatsAppProvider" }, error as Error);
+      return { success: false, error: "WhatsApp provider communication failure" };
+    }
+  }
 }
 
-export class TestWhatsAppProvider implements WhatsAppOtpProvider {
-  public sentMessages: Array<{ phone: string; otp: string; timestamp: number }> = [];
+export class TestWhatsAppProvider implements WhatsAppProvider {
+  public sentMessages: Array<{ phone: string; otp?: string; templateName?: string; parameters?: string[]; timestamp: number }> = [];
 
   async sendOtp({ phone, otp }: SendOtpInput): Promise<SendOtpResult> {
     this.sentMessages.push({ phone, otp, timestamp: Date.now() });
     logger.info("Test WhatsApp OTP dispatched", {
       component: "TestWhatsAppProvider",
       metadata: { phoneMasked: phone.replace(/(\+\d{2}\d{2})\d{4}(\d{4})/, "$1****$2") },
+    });
+    return {
+      success: true,
+      providerMessageId: `test_msg_${Date.now()}`,
+    };
+  }
+
+  async sendTemplate({ phone, templateName, parameters }: SendTemplateInput): Promise<SendTemplateResult> {
+    this.sentMessages.push({ phone, templateName, parameters, timestamp: Date.now() });
+    logger.info("Test WhatsApp template dispatched", {
+      component: "TestWhatsAppProvider",
+      metadata: { phoneMasked: phone.replace(/(\+\d{2}\d{2})\d{4}(\d{4})/, "$1****$2"), templateName },
     });
     return {
       success: true,
@@ -93,7 +162,7 @@ export class TestWhatsAppProvider implements WhatsAppOtpProvider {
 
 let testProviderInstance: TestWhatsAppProvider | null = null;
 
-export function getWhatsAppProvider(): WhatsAppOtpProvider {
+export function getWhatsAppProvider(): WhatsAppProvider {
   const env = process.env.NODE_ENV || "development";
   const hasWatxioKey = Boolean(process.env.WABA_API_KEY);
 

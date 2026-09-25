@@ -11,6 +11,19 @@ export interface SendOtpResult {
   error?: string;
 }
 
-export interface WhatsAppOtpProvider {
+export interface SendTemplateInput {
+  phone: string;
+  templateName: string;
+  parameters: string[]; // Standard Watxio parameter list
+}
+
+export interface SendTemplateResult {
+  success: boolean;
+  providerMessageId?: string;
+  error?: string;
+}
+
+export interface WhatsAppProvider {
   sendOtp(input: SendOtpInput): Promise<SendOtpResult>;
+  sendTemplate(input: SendTemplateInput): Promise<SendTemplateResult>;
 }
